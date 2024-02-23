@@ -30,7 +30,9 @@ def debug(*msgs) -> None:
     print(_, file=sys.stderr)
 
 def isuuid(s:str):
-  return re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', s)
+  if isinstance(s, UUID): return True
+  elif isinstance(s, str): return re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', s)
+  elif isinstance(s, (tuple, list)) and len(s) == 1: return isuuid(s[0])
 
 def gui_action(action:str, project:StringVar='') -> None:
   project_id, project_name = load_project(project.get())
@@ -226,26 +228,26 @@ def csv_format(stats:dict[str, str], at:Union[datetime.datetime, None]=None, lar
       continue
 
     if largest_scale == 'w':
-      r += f'{weeks_long(total):02}',   end=',')
-      r += f'{days_long(total):02}',    end=',')
-      r += f'{hours_long(total):02}',   end=',')
-      r += f'{minutes_long(total):02}', end=',')
-      r += f'{seconds_long(total):02}', end=',')
+      r += f'{weeks_long(total):02},'
+      r += f'{days_long(total):02},'
+      r += f'{hours_long(total):02},'
+      r += f'{minutes_long(total):02},'
+      r += f'{seconds_long(total):02},'
 
     if largest_scale == 'd':
-      r += f'{days_long(total):03}',    end=',')
-      r += f'{hours_long(total):02}',   end=',')
-      r += f'{minutes_long(total):02}', end=',')
-      r += f'{seconds_long(total):02}', end=',')
+      r += f'{days_long(total):03},'
+      r += f'{hours_long(total):02},'
+      r += f'{minutes_long(total):02},'
+      r += f'{seconds_long(total):02},'
 
     if largest_scale == 'h':
-      r += f'{hours_long(total):03}',   end=',')
-      r += f'{minutes_long(total):02}', end=',')
-      r += f'{seconds_long(total):02}', end=',')
+      r += f'{hours_long(total):03},'
+      r += f'{minutes_long(total):02},'
+      r += f'{seconds_long(total):02},'
 
     if largest_scale == 'm':
-      r += f'{minutes_long(total):03}', end=',')
-      r += f'{seconds_long(total):02}', end=',')
+      r += f'{minutes_long(total):03},'
+      r += f'{seconds_long(total):02},'
 
     if largest_scale == 's':
       r += f'{total},{total},'
@@ -412,16 +414,16 @@ def _datetime(dtin:str) -> datetime.datetime:
     return datetime.datetime.strptime(f'{datetime.date.today().strftime("%F")} 00:00:00', '%Y-%m-%d %H:%M:%S') - datetime.timedelta(days=1)
   elif dtin.casefold() in weekdays:
     current_dow = now().weekday()
-    if current_dow <= weekdays.index(dtin): 
-      return now() - datetime.timedelta(days=7 - (weekdays.index(dtin) - current_dow))
+    if current_dow <= weekdays.index(dtin.casefold()): 
+      return now() - datetime.timedelta(days=7 - (weekdays.index(dtin.casefold()) - current_dow))
     else:
-      return now() - datetime.timedelta(days=current_dow - weekdays.index(dtin))
+      return now() - datetime.timedelta(days=current_dow - weekdays.index(dtin.casefold()))
   elif dtin.casefold() in abbrev_weekdays:
     current_dow = now().weekday()
-    if current_dow <= abbrev_weekdays.index(dtin): 
-      return now() - datetime.timedelta(days=7 - (abbrev_weekdays.index(dtin) - current_dow))
+    if current_dow <= abbrev_weekdays.index(dtin.casefold()): 
+      return now() - datetime.timedelta(days=7 - (abbrev_weekdays.index(dtin.casefold()) - current_dow))
     else:
-      return now() - datetime.timedelta(days=current_dow - abbrev_weekdays.index(dtin))
+      return now() - datetime.timedelta(days=current_dow - abbrev_weekdays.index(dtin.casefold()))
   elif ':' in dtin and len(hrs_mins := dtin.split(':')) == 2 and all(map(str.isdigit, hrs_mins)) and 0 <= int(hrs_mins[0]) < 24 and 0 <= int(hrs_mins[1]) < 60:
     return datetime.datetime.strptime(f'{datetime.date.today().strftime("%F")} {hrs_mins[0]}:{hrs_mins[1]}', '%Y-%m-%d %H:%M')
   elif ':' in dtin and len(hrs_mins_secs := dtin.split(':')) == 3 and all(map(str.isdigit, hrs_mins_secs)) and 0 <= int(hrs_mins[0]) < 24 and 0 <= int(hrs_mins[1]) < 60 and 0 <= int(hrs_mins[2]) < 60:
@@ -486,7 +488,7 @@ def pargs() -> argparse.Namespace:
   sho.set_defaults(action='show_logs')
 
   shi = showsub.add_parser('id',       help='Show the project name from the provided id.')
-  shi.add_argument('project', metavar='UUID')
+  shi.add_argument('project', type=UUID, metavar='UUID')
   shi.set_defaults(action='show_id')
 
   rep = sub.add_parser('report', help='Report the results of work done')
@@ -506,18 +508,22 @@ def pargs() -> argparse.Namespace:
   p.set_defaults(project=[], action='help')
 
   r = p.parse_args()
-  if r.project is not None and len(r.project) > 0 and isinstance(r.project, list):
+  if r.project is not None and isinstance(r.project, list) and len(r.project) > 0:
     r.project = ' '.join(r.project).strip().replace('\n', ' ')
 
-  if isinstance(r.project, str) and re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', r.project):
+  if isuuid(r.project):
     r.project = UUID(r.project)
   debug(r)
+
+  if r.action == 'help':
+    p.print_help()
+    sys.exit(0)
   return r
 
 def main() -> None:
   p = pargs()
   if p.action == 'show_id':
-    print(db('hget', 'projects', str(id)))
+    print(db('hget', 'projects', str(p.project)))
   elif p.action == 'show_last':
     print('Last project: {last[1]!r}; action: {last[2]!r}; at: {last[3]}.'.format(last=last_project()))
   elif p.action == 'show_projects':
@@ -526,7 +532,11 @@ def main() -> None:
   elif p.action == 'show_logs':
     for tid, log in db('xrange', 'logs', '-', '+'):
       log_id, log_project = load_project(log.get('project'))
-      if project is None or log_id == project:
+      if p.project is None:
+        print(f"{stream_time(tid)} action {log.get('action')!r} project {log_project!r}")
+      elif isinstance(p.project, UUID) and log_id == p.project:
+        print(f"{stream_time(tid)} action {log.get('action')!r} project {log_project!r}")
+      elif not isuuid(p.project) and log_id == UUID(db('hget', 'projects', p.project.casefold())):
         print(f"{stream_time(tid)} action {log.get('action')!r} project {log_project!r}")
   elif p.action == 'start':
     start_project(p.project, p.at)
@@ -538,8 +548,6 @@ def main() -> None:
     remove(p.project)
   elif p.action == 'gui':
     gui()
-  elif p.action == 'help':
-    p.print_help()
   elif p.action == 'report':
     if p.url:
       post_report(p)
