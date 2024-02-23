@@ -314,7 +314,7 @@ def text_format(stats:dict[str, str], at:Union[datetime.datetime, None]=None, la
 
 def get_stats(project:Union[str, UUID, None]=None, at:Union[datetime.datetime, None]=None) -> dict[str, float]:
   stats = {}
-  accum = {}
+  accum = None
   for tid, log in db('xrange', 'logs', '-', '+'):
     proj = log.get('project')
     actn = log.get('action')
@@ -329,10 +329,10 @@ def get_stats(project:Union[str, UUID, None]=None, at:Union[datetime.datetime, N
 
     stats.setdefault(proj, 0)
     if actn == 'started':
-      accum = {proj: _time}
+      accum = _time
     elif actn == 'stopped':
-      stats[proj] += _time-accum[proj]
-      accum = {}
+      stats[proj] += _time-accum
+      accum = None
 
   last_id, last_name, last_state, last_when = last_project()
   if last_state == 'started':
