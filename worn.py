@@ -11,6 +11,7 @@ import functools
 from urllib.parse import urlparse
 from typing import *
 import re
+import io
 
 def db(cmd, key='', *args, **kw):
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
@@ -206,106 +207,108 @@ def seconds_long(ts:int) -> int:
   return int(ts%60)
 
 def csv_format(stats:dict[str, str], at:Union[datetime.datetime, None]=None, largest_scale:str='h', still_running:Union[UUID, None]=None, include_all:bool=False) -> None:
-  print('Time spent report')
-  if largest_scale == 'w':   print('weeks,days,hours,minutes,seconds', end=',')
-  elif largest_scale == 'd': print('days,hours,minutes,seconds', end=',')
-  elif largest_scale == 'h': print('hours,minutes,seconds', end=',')
-  elif largest_scale == 'm': print('minutes,seconds', end=',')
-  elif largest_scale == 's': print('seconds', end=',')
+  r = 'Time spent report'
+  if largest_scale == 'w':   r += 'weeks,days,hours,minutes,seconds'
+  elif largest_scale == 'd': r += 'days,hours,minutes,seconds'
+  elif largest_scale == 'h': r += 'hours,minutes,seconds'
+  elif largest_scale == 'm': r += 'minutes,seconds'
+  elif largest_scale == 's': r += 'seconds'
 
-  print('total,id,project,running', end='')
+  r += 'total,id,project,running'
   if isinstance(at, datetime.datetime):
-    print(',since')
+    r += ',since'
   else:
-    print('')
+    r += ''
+  r += "\n"
 
   for pid, total in stats.items():
     if total == 0 and not include_all:
       continue
 
     if largest_scale == 'w':
-      print(f'{weeks_long(total):02}',   end=',')
-      print(f'{days_long(total):02}',    end=',')
-      print(f'{hours_long(total):02}',   end=',')
-      print(f'{minutes_long(total):02}', end=',')
-      print(f'{seconds_long(total):02}', end=',')
+      r += f'{weeks_long(total):02}',   end=',')
+      r += f'{days_long(total):02}',    end=',')
+      r += f'{hours_long(total):02}',   end=',')
+      r += f'{minutes_long(total):02}', end=',')
+      r += f'{seconds_long(total):02}', end=',')
 
     if largest_scale == 'd':
-      print(f'{days_long(total):03}',    end=',')
-      print(f'{hours_long(total):02}',   end=',')
-      print(f'{minutes_long(total):02}', end=',')
-      print(f'{seconds_long(total):02}', end=',')
+      r += f'{days_long(total):03}',    end=',')
+      r += f'{hours_long(total):02}',   end=',')
+      r += f'{minutes_long(total):02}', end=',')
+      r += f'{seconds_long(total):02}', end=',')
 
     if largest_scale == 'h':
-      print(f'{hours_long(total):03}',   end=',')
-      print(f'{minutes_long(total):02}', end=',')
-      print(f'{seconds_long(total):02}', end=',')
+      r += f'{hours_long(total):03}',   end=',')
+      r += f'{minutes_long(total):02}', end=',')
+      r += f'{seconds_long(total):02}', end=',')
 
     if largest_scale == 'm':
-      print(f'{minutes_long(total):03}', end=',')
-      print(f'{seconds_long(total):02}', end=',')
+      r += f'{minutes_long(total):03}', end=',')
+      r += f'{seconds_long(total):02}', end=',')
 
     if largest_scale == 's':
-      print(total, end=',')
+      r += f'{total},{total},'
     else:
-      print(total,                       end=',')
+      r += f'{total},'
 
-    print(pid,                         end=',')
-    print('"{0}"'.format(db('hget', 'projects', pid)), end=',')
+    r += f'{pid},'
+    r += '"{0}",'.format(db('hget', 'projects', pid))
     if isinstance(still_running, UUID) and still_running == UUID(pid):
-      print('true', end='')
+      r += 'true'
     else:
-      print('false', end='')
+      r += 'false'
 
     if isinstance(at, datetime.datetime):
-      print(f',{at.strftime("%a %F %T")}')
-    else:
-      print('')
+      r += f',{at.strftime("%a %F %T")}'
+    r += "\n"
 
-def text_format(stats:dict[str, str], at:Union[datetime.datetime, None]=None, largest_scale:str='h', still_running:Union[UUID, None]=None, include_all:bool=False) -> None:
-  print('Time spent report', end='')
+  return r
+
+def text_format(stats:dict[str, str], at:Union[datetime.datetime, None]=None, largest_scale:str='h', still_running:Union[UUID, None]=None, include_all:bool=False) -> io.StringIO:
+  r = 'Time spent report'
   if isinstance(at, datetime.datetime):
-    print(f' since: {at.strftime("%a %F %T")}')
+    r += f' since: {at.strftime("%a %F %T")}'
   else:
-    print(f':')
+    r += ':'
+  r += "\n"
 
   for pid, total in stats.items():
     if total == 0 and not include_all:
       continue
 
     if largest_scale == 'w':
-      print(f'{weeks_long(total):02}w', end='')
-      print(f' {days_long(total):02}d', end='')
-      print(f' {hours_long(total):02}h', end='')
-      print(f' {minutes_long(total):02}m', end='')
-      print(f' {seconds_long(total):02}s', end='')
+      r += f'{weeks_long(total):02}w'
+      r += f' {days_long(total):02}d'
+      r += f' {hours_long(total):02}h'
+      r += f' {minutes_long(total):02}m'
+      r += f' {seconds_long(total):02}s'
 
     if largest_scale == 'd':
-      print(f'{days_long(total):03}d', end='')
-      print(f' {hours_long(total):02}h', end='')
-      print(f' {minutes_long(total):02}m', end='')
-      print(f' {seconds_long(total):02}s', end='')
+      r += f'{days_long(total):03}d'
+      r += f' {hours_long(total):02}h'
+      r += f' {minutes_long(total):02}m'
+      r += f' {seconds_long(total):02}s'
 
     if largest_scale == 'h':
-      print(f'{hours_long(total):03}h', end='')
-      print(f' {minutes_long(total):02}m', end='')
-      print(f' {seconds_long(total):02}s', end='')
+      r += f'{hours_long(total):03}h'
+      r += f' {minutes_long(total):02}m'
+      r += f' {seconds_long(total):02}s'
 
     if largest_scale == 'm':
-      print(f'{minutes_long(total):03}m', end='')
-      print(f' {seconds_long(total):02}s', end='')
+      r += f'{minutes_long(total):03}m'
+      r += f' {seconds_long(total):02}s'
 
     if largest_scale == 's':
-      print(f'{total: >8}s', end='')
+      r += f'{total: >8}s'
     else:
-      print(f' total {total: >8}', end='')
+      r += f' total {total: >8}'
 
-    print(f' id {pid}', end='')
-    print(f" project {db('hget', 'projects', pid)!r}", end='')
+    r += f' id {pid}'
+    r += f" project {db('hget', 'projects', pid)!r}"
     if isinstance(still_running, UUID) and still_running == UUID(pid):
-      print('...and counting')
-    else:
-      print('')
+      r += '...and counting'
+    return r + "\n"
 
 def get_stats(project:Union[str, UUID, None]=None, at:Union[datetime.datetime, None]=None) -> dict[str, float]:
   stats = {}
@@ -340,7 +343,23 @@ def get_stats(project:Union[str, UUID, None]=None, at:Union[datetime.datetime, N
 
   return stats
 
-def report(args:argparse.Namespace) -> None:
+def post_report(args:argparse.Namespace) -> None:
+  if args.since:
+    when = args.since
+  elif args.between:
+    when = args.between
+  else:
+    when = None
+
+  stats = get_stats(args.project, when)
+  is_running = None
+  last_id, last_name, last_state, last_when = last_project()
+  if last_state == 'started':
+    is_running = last_id
+
+  raise Exception('Implement me!')
+
+def mail_report(args:argparse.Namespace) -> None:
   if args.since:
     when = args.since
   elif args.between:
@@ -355,9 +374,32 @@ def report(args:argparse.Namespace) -> None:
     is_running = last_id
 
   if args.format == 'text':
-    text_format(stats, when, args.largest_scale, is_running, args.include_all)
+    msg = text_format(stats, when, args.largest_scale, is_running, args.include_all)
   elif args.format == 'csv':
-    csv_format( stats, when, args.largest_scale, is_running, args.include_all)
+    msg = csv_format( stats, when, args.largest_scale, is_running, args.include_all)
+
+  with smtplib.SMTP('localhost') as mc:
+    mc.set_debuglevel(1)
+    mc.sendmail('scott@viviotech.net', p.mailto, msg)
+
+def print_report(args:argparse.Namespace) -> None:
+  if args.since:
+    when = args.since
+  elif args.between:
+    when = args.between
+  else:
+    when = None
+
+  stats = get_stats(args.project, when)
+  is_running = None
+  last_id, last_name, last_state, last_when = last_project()
+  if last_state == 'started':
+    is_running = last_id
+
+  if args.format == 'text':
+    print(text_format(stats, when, args.largest_scale, is_running, args.include_all))
+  elif args.format == 'csv':
+    print(csv_format( stats, when, args.largest_scale, is_running, args.include_all))
 
 def _datetime(dtin:str) -> datetime.datetime:
   weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
@@ -453,8 +495,8 @@ def pargs() -> argparse.Namespace:
   rep.add_argument('-b', '--between',       type=_datetime, nargs=2,                        metavar=('DATETIME', 'DATETIME'),                  help='Report details between these date and times.')
   rep.add_argument('-l', '--largest_scale', type=str,       choices='w,d,h,m,s'.split(','),                                    default='h',    help='The largest component of time to display (default: "h"): w => Weeks; d => Days; h => Hours; m => Minutes; s => Seconds.')
   rep.add_argument('-f', '--format',        type=str,       choices='text,csv'.split(','),                                     default='text', help='Output the report in this format (default: text).')
-  rep.add_argument('-u', '--url',           type=urlparse,                                                                                     help='Document the report to this url.')
-  rep.add_argument('-m', '--mailto',        type=email,                                                                                        help='Email the report to this user.')
+  rep.add_argument('-u', '--url',           type=urlparse,                                                                     default=None,   help='Document the report to this url.')
+  rep.add_argument('-m', '--mailto',        type=email,                                                                        default=None,   help='Email the report to this user.')
   rep.add_argument('-a', '--include_all',                   action='store_true',                                               default=False,  help='Display ALL projects including those without any tracked time.')
   rep.set_defaults(action='report')
 
@@ -499,7 +541,12 @@ def main() -> None:
   elif p.action == 'help':
     p.print_help()
   elif p.action == 'report':
-    report(p)
+    if p.url:
+      post_report(p)
+    elif p.mailto:
+      mail_report(p)
+    else:
+      print_report(p)
 
 if __name__ == '__main__':
   main()
