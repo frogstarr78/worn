@@ -7,7 +7,6 @@ from uuid import uuid4, UUID
 import redis
 import argparse
 import datetime
-import functools
 from urllib.parse import urlparse
 from typing import *
 import re
@@ -23,23 +22,169 @@ def db(cmd, key='', *args, **kw):
     else:
       return None
 now = datetime.datetime.now
-fromtimestamp = datetime.datetime.fromtimestamp
+def parse_timestamp(tsin):
+  if isinstance(tsin, (int, float)):
+    return datetime.datetime.fromtimestamp(tsin)
+  elif isinstance(tsin, str):
+    if '-' in tsin:
+      tsin = tsin.split('-')[0]
 
-def debug(*msgs) -> None:
-  for _ in msgs:
-    print(_, file=sys.stderr)
+    if len(tsin) >= 13:
+      if '.' in tsin[:13]:
+        return datetime.datetime.fromtimestamp(float(tsin[:13]))
+      else:
+        return datetime.datetime.fromtimestamp(float('.'.join([tsin[:10], tsin[10:13]])))
+    elif len(tsin) > 10:
+      return datetime.datetime.fromtimestamp(float(f'{tsin:0<13}'))
+    else:
+      raise Exception(f'Invalid timestamp {tsin!r} supplied.')
+  else:
+    raise Exception(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
+
+# https://stackoverflow.com/a/26445590
+class colors:
+    '''Colors class:
+    Reset all colors with colors.reset
+    Two subclasses fg for foreground and bg for background.
+    Use as colors.subclass.colorname.
+    i.e. colors.fg.red or colors.bg.green
+    Also, the generic bold, disable, underline, reverse, strikethrough,
+    and invisible work with the main class
+    i.e. colors.bold
+    '''
+    reset='\033[0m'
+    bold='\033[01m'
+    disable='\033[02m'
+    underline='\033[04m'
+    reverse='\033[07m'
+    strikethrough='\033[09m'
+    invisible='\033[08m'
+    class fg:
+        black='\033[30m'
+        red='\033[31m'
+        green='\033[32m'
+        orange='\033[33m'
+        blue='\033[34m'
+        purple='\033[35m'
+        cyan='\033[36m'
+        lightgrey='\033[37m'
+        darkgrey='\033[90m'
+        lightred='\033[91m'
+        lightgreen='\033[92m'
+        yellow='\033[93m'
+        lightblue='\033[94m'
+        pink='\033[95m'
+        lightcyan='\033[96m'
+    class bg:
+        black='\033[40m'
+        red='\033[41m'
+        green='\033[42m'
+        orange='\033[43m'
+        blue='\033[44m'
+        purple='\033[45m'
+        cyan='\033[46m'
+        lightgrey='\033[47m'
+
+# https://stackoverflow.com/a/61960902
+def colorize(r, g, b, msg):
+  return f"\033[38;2;{r};{g};{b}m{msg}\033[0m"
 
 def isuuid(s:str):
   if isinstance(s, UUID): return True
   elif isinstance(s, str): return re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', s)
   elif isinstance(s, (tuple, list)) and len(s) == 1: return isuuid(s[0])
+  else: return False
 
-def gui_action(action:str, project:StringVar='') -> None:
-  project_id, project_name = load_project(project.get())
+class Project(object):
+  def __init__(self, nameorid:Union[None, str, UUID], state:str='stopped', when:datetime.datetime=now()):
+    self.id = None
+    self.name = None
+    self.state = state
+    self.when = when
+    self._load_project(nameorid)
+
+  def _load_project(self, nameorid:Union[None, str, UUID]):
+    if nameorid is None:
+      debug(f"Project {nameorid!r} was empty.")
+      return (None, None)
+    elif isinstance(nameorid, Sequence) and len(nameorid) == 0:
+      debug(f"Project {nameorid!r} was empty.")
+      return (None, None)
+
+    if isinstance(nameorid, UUID):
+      if db_exists('hexists', 'projects', str(nameorid)):
+        self.id   = nameorid
+        self.name = db('hget', 'projects', str(nameorid))
+    elif isinstance(nameorid, str):
+      if isuuid(nameorid) and db_exists('hexists', 'projects', nameorid):
+        self.id   = UUID(nameorid)
+        self.name = db('hget', 'projects', nameorid)
+      elif db_exists('hexists', 'projects', nameorid.casefold().strip()):
+        self.id   = UUID(db('hget', 'projects', nameorid.casefold().strip()))
+        self.name = nameorid
+      elif nameorid.casefold().strip() == 'last':
+        last_project = Project.last()
+        self.id    = last_project.id
+        self.name  = last_project.name
+        self.state = last_project.state
+        self.when  = last_project.when
+      else:
+        self.id   = uuid4()
+        self.name = nameorid
+        db('hsetnx', 'projects', nameorid.casefold().strip(), str(id))
+        db('hsetnx', 'projects', str(id), nameorid.strip())
+    else:
+      debug(f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
+      raise Exception(f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
+
+  def __eq__(self, other):
+    if isinstance(other, Project):
+      if isinstance(other.id, UUID):
+        return self.id == other.id
+      elif isinstance(other.id, str) and isuuid(other.id):
+        return self.id == UUID(other.id)
+    elif isinstance(other, UUID):
+      return self.id == other
+    elif isinstance(other, str) and isuuid(other):
+      return self.id == UUID(other)
+    else:
+      return False
+
+  @classmethod
+  def last(kind):
+    if not db('exists', 'last'):
+      return (uuid4(), '', 'stopped', now())
+
+    last = db('hgetall', 'last')
+    return Project(last.get('project'), last.get('action'), parse_timestamp(last.get('when')))
+
+  def is_running(self):
+    return self.state == 'started'
+
+  @property
+  def log_format(self):
+    r = f'{parse_timestamp(self.when).isoformat(" ", timespec="seconds")} '
+    if self.is_running():
+      r += f'state {colors.fg.green}{self.state!r}{colors.reset} '
+    else:
+      r += f'state {colors.fg.orange}{self.state!r}{colors.reset} '
+    r += f'id {self.id} project {self.name!r}'
+    return r
+
+def debug(*msgs) -> None:
+  for _ in msgs:
+    print(_, file=sys.stderr)
+
+def gui_action(event, cb:ttk.Combobox) -> None:
+  action = event.widget.cget('text')
+  project = load_project(cb.get())
   if 'Start' in action:
-    start_project(project_id)
+    start_project(project.id)
+
+    cb['values'] = all_projects()
+    cb['width']  = len(max(_projects, key=len))-10
   elif action == 'Stop':
-    stop_project(project_id)
+    stop_project(project.id)
   else:
     debug(f"Unknown action {action!r}")
 
@@ -52,27 +197,26 @@ def gui() -> None:
   frm = ttk.LabelFrame(root, text='Project', underline=0, padding=11)
   frm.grid()
 
-  _projects = [project for (pid, project) in all_projects().items()]
+  _projects = all_projects()
   c = ttk.Combobox(frm, values=_projects, textvariable=proj, width=len(max(_projects, key=len))-10)
-  last_id, last_name, last_state, last_when = last_project()
-  debug(last_name)
-  if last_state == 'started':
-    c.set(last_name)
+  last_project = Project.last()
+  if last_project.is_running():
+    c.set(last_project.name)
   c.grid(row=0, column=0, pady=7, columnspan=3)
 
   s = ttk.Button(frm, text="(Re-)Start", underline=5)
-  s.bind('<ButtonPress>',    lambda e: gui_action(s['text'], proj))
-  s.bind('<KeyPress-space>', lambda e: gui_action(s['text'], proj))
+  s.bind('<ButtonPress>',    lambda e: gui_action(e, c))
+  s.bind('<KeyPress-space>', lambda e: gui_action(e, c))
 
   t = ttk.Button(frm, text="Stop", underline=1)
-  t.bind('<ButtonPress>',    lambda e: gui_action(t['text'], proj))
-  t.bind('<KeyPress-space>', lambda e: gui_action(t['text'], proj))
+  t.bind('<ButtonPress>',    lambda e: gui_action(e, c))
+  t.bind('<KeyPress-space>', lambda e: gui_action(e, c))
 
-  c = ttk.Button(frm, text="Quit", underline=0, command=root.destroy)
+  q = ttk.Button(frm, text="Quit", underline=0, command=root.destroy)
 
   s.grid(row=1, column=0)
   t.grid(row=1, column=1)
-  c.grid(row=1, column=2)
+  q.grid(row=1, column=2)
 
   root.bind('<Alt-p>', lambda *e: c.focus_set())
   root.bind('<Alt-s>', lambda *e: s.focus_set())
@@ -92,106 +236,65 @@ def db_exists(cmd, key, *rest):
 
   return db(cmd, key, *rest)
 
-def log(id, project, state, at=now()):
+def log(project:Project, state:str, at:datetime.datetime=now()):
   _ts = str(at.timestamp()).replace('.', '')[:13]
-  db('hsetnx', 'projects', str(id), project)
-  db('hsetnx', 'projects', project.casefold(), str(id))
-  db('xadd', 'logs', dict(project=str(id), action=state), id=f'{_ts:0<13}-*')
-  db('hset', 'last', mapping=dict(action=state, project=str(id), when=_ts))
+  db('hsetnx', 'projects', str(project.id), project.name)
+  db('hsetnx', 'projects', project.name.casefold(), str(project.id))
+  db('xadd', 'logs', dict(project=str(project.id), action=state), id=f'{_ts:0<13}-*')
+  db('hset', 'last', mapping=dict(action=state, project=str(project.id), when=_ts))
   db('save')
 
-@functools.cache
-def load_project(project:Union[None, str, UUID]) -> Tuple[UUID, str]:
-  if project is None:
-    debug(f"Project {project!r} was empty.")
-    return (None, None)
-  elif isinstance(project, Sequence) and len(project) == 0:
-    debug(f"Project {project!r} was empty.")
-    return (None, None)
+def start_project(project:Project, at:datetime=now()) -> None:
+  if not isinstance(project, Project):
+    raise Exception(f"Project {project!r} is not the correct type")
 
-  if isinstance(project, UUID):
-    if db_exists('hexists', 'projects', str(project)):
-      return (project, db('hget', 'projects', str(project)))
-  elif isinstance(project, str):
-    if isuuid(project) and db_exists('hexists', 'projects', project):
-      return (UUID(project), db('hget', 'projects', project))
-    elif db_exists('hexists', 'projects', project.casefold()):
-      return (UUID(db('hget', 'projects', project.casefold())), project)
-    elif project.casefold() == 'last':
-      last_id, last_name, last_state, last_when = last_project()
-      return (last_id, last_name)
-    else:
-      id = uuid4()
-      db('hsetnx', 'projects', project.casefold(), str(id))
-      db('hsetnx', 'projects', str(id), project)
-      return (id, project)
+  if Project.last().is_running():
+    stop_project(Project.last(), at=at)
+  log(project, 'started', at)
+
+def stop_project(project:Project, at:datetime=now()) -> None:
+  if not isinstance(project, Project):
+    raise Exception(f"Project {project!r} is the wrong type {type(project)!r}.")
+
+  last_project = Project.last()
+  if project != last_project:
+    debug(f"The previous project {last_project.name!r} was not the same project specified {project.name!r}.")
+  elif project == last_project and not last_project.is_running():
+    debug(f"The previous project {last_project.name!r} has not started.")
   else:
-    debug(f'Unable to find or create a new project {project} of type {type(project)}.')
-    raise Exception(f'Unable to find or create a new project {project} of type {type(project)}.')
+    log(project, 'stopped', at)
 
-@functools.cache
-def last_project() -> tuple[UUID, str, str, datetime.datetime]:
-  if not db('exists', 'last'):
-    raise Exception('No previous projects logged')
+def rename(old:Project, new:Project) -> None:
+  if not isinstance(old, Project):
+    raise Exception(f"Project {old!r} is the wrong type {type(old)!r}.")
+  elif not isinstance(new, Project):
+    raise Exception(f"Project {new!r} is the wrong type {type(new)!r}.")
 
-  r = db('hgetall', 'last')
-  last_id = UUID(r.get('project'))
-  last_name = db('hget', 'projects', str(last_id))
-  last_state = r.get('action')
-  if (last_when := r.get('when')).isdigit():
-    last_when = datetime.datetime.fromtimestamp(float('.'.join([last_when[:10], last_when[10:13]])))
-  else:
-    last_when = datetime.datetime.strptime(last_when, '%Y-%m-%d %H:%M:%S')
-
-  return (last_id, last_name, last_state, last_when)
-
-def start_project(project:Union[str, UUID, None], at:datetime=now()) -> None:
-  project_id, project_name = load_project(project)
-  if db('exists', 'last'):
-    last_id, last_name, last_state, last_when = last_project()
-    if last_state == 'started':
-      stop_project(last_id, at=at)
-  log(project_id, project_name, 'started', at)
-
-def stop_project(project:Union[str, UUID, None], at:datetime=now()) -> None:
-  last_id, last_name, last_state, last_when = last_project()
-  current_project_id, current_project_name = load_project(project)
-
-  if current_project_id is None or current_project_name is None:
-    log(last_id, last_name, 'stopped', at)
-  elif project == 'last':
-    log(last_id, last_name, 'stopped', at)
-  elif last_id != current_project_id:
-    debug(f"The previous project {last_name!r} was not the same project specified.")
-  elif last_state != 'started':
-    debug(f"The previous project {last_name!r} has not started.")
-  else:
-    log(current_project_id, current_project_name, 'stopped', at)
-
-def rename(old:Union[str, UUID], new:str) -> None:
-  id, old_project = load_project(old)
   db('hset', 'projects', str(id), new)
   db('hset', 'projects', new.casefold(), str(id))
   db('save')
 
-def remove(project:Union[UUID, str]) -> None:
-  project_id, project_name = load_project(project)
+def remove(project:Project) -> None:
+  if not isinstance(project, Project):
+    raise Exception(f"Project {project!r} is the wrong type {type(project)!r}.")
+
   for timeid, log in db('xrange', 'logs', '-', '+'):
-    if UUID(log.get('project')) == project_id:
+    if UUID(log.get('project')) == project.id:
       db('xdel', 'logs', timeid)
 
-  db('hdel', 'projects', project_name)
-  db('hdel', 'projects', str(project_id))
+  if project == Project.last():
+    db('del', 'last')
+
+  db('hdel', 'projects', project.name)
+  db('hdel', 'projects', str(project.id))
   db('save')
 
-@functools.cache
-def all_projects() -> dict[UUID, str]:
-  return dict([(UUID(pid), project) for pid, project in sorted(db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)])
+def all_projects() -> list[Project]:
+  return [Project(UUID(pid)) for pid, project in sorted(db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
 
 def stream_time(stream_id:str) -> str:
   unix_time_mills, seq = stream_id.split('-')
-  timestamp_mills = float('.'.join([unix_time_mills[:10], unix_time_mills[10:]]))
-  return fromtimestamp(timestamp_mills).isoformat(' ', timespec='seconds')
+  return float('.'.join([unix_time_mills[:10], unix_time_mills[10:]]))
 
 def weeks_long(ts:int) -> int:
   return int(ts/(3600*24*7))
@@ -208,7 +311,7 @@ def minutes_long(ts:int) -> int:
 def seconds_long(ts:int) -> int:
   return int(ts%60)
 
-def csv_format(stats:dict[str, str], at:Union[datetime.datetime, None]=None, largest_scale:str='h', still_running:Union[UUID, None]=None, include_all:bool=False) -> None:
+def csv_format(stats:dict[str, float], at:Union[datetime.datetime, None]=None, largest_scale:str='h', still_running:Union[UUID, None]=None, include_all:bool=False) -> None:
   r = 'Time spent report'
   if largest_scale == 'w':   r += 'weeks,days,hours,minutes,seconds'
   elif largest_scale == 'd': r += 'days,hours,minutes,seconds'
@@ -267,7 +370,7 @@ def csv_format(stats:dict[str, str], at:Union[datetime.datetime, None]=None, lar
 
   return r
 
-def text_format(stats:dict[str, str], at:Union[datetime.datetime, None]=None, largest_scale:str='h', still_running:Union[UUID, None]=None, include_all:bool=False) -> io.StringIO:
+def text_format(stats:dict[str, float], at:Union[datetime.datetime, None]=None, largest_scale:str='h', include_all:bool=False) -> io.StringIO:
   r = 'Time spent report'
   if isinstance(at, datetime.datetime):
     r += f' since: {at.strftime("%a %F %T")}'
@@ -308,20 +411,21 @@ def text_format(stats:dict[str, str], at:Union[datetime.datetime, None]=None, la
 
     r += f' id {pid}'
     r += f" project {db('hget', 'projects', pid)!r}"
-    if isinstance(still_running, UUID) and still_running == UUID(pid):
-      r += '...and counting'
+    last_project = Project.last()
+    if last_project.is_running() and last_project == pid:
+        r += '...and counting'
     return r + "\n"
 
-def get_stats(project:Union[str, UUID, None]=None, at:Union[datetime.datetime, None]=None) -> dict[str, float]:
+def get_all_stats(at:Union[datetime.datetime, None]=None) -> dict[str, float]:
   stats = {}
   accum = None
   for tid, log in db('xrange', 'logs', '-', '+'):
     proj = log.get('project')
     actn = log.get('action')
-    _time = int(tid[:10])
+    _time = stream_time(tid)
     if project is not None and len(str(project)) > 0:
-      project_id, project_name = load_project(project)
-      if str(project_id) != proj:
+      project = load_project(project)
+      if str(project.id) != proj:
         continue
 
     if isinstance(at, datetime.datetime) and _time <= at.timestamp():
@@ -334,80 +438,72 @@ def get_stats(project:Union[str, UUID, None]=None, at:Union[datetime.datetime, N
       stats[proj] += _time-accum
       accum = None
 
-  last_id, last_name, last_state, last_when = last_project()
-  if last_state == 'started':
-    stats[str(last_id)] += int(now().timestamp()-last_when.timestamp())
+  last_project = Project.last()
+  if last_project.is_running():
+    stats[str(last_project.id)] += int(now().timestamp()-last_project.when.timestamp())
 
   if project is None:
-    for project_id in db('hkeys', 'projects'):
-      if isuuid(project_id):
-        stats.setdefault(project_id, 0)
+    for project.id in db('hkeys', 'projects'):
+      if isuuid(project.id):
+        stats.setdefault(project.id, 0)
 
   return stats
 
-def post_report(args:argparse.Namespace) -> None:
-  if args.since:
-    when = args.since
-  elif args.between:
-    when = args.between
-  else:
-    when = None
+def get_project_stats(project:Project, at:Union[datetime.datetime, None]=None) -> dict[str, float]:
+  if not isinstance(project, Project):
+    raise Exception(f"Project {project!r} is the wrong type {type(project)!r}.")
 
-  stats = get_stats(args.project, when)
-  is_running = None
-  last_id, last_name, last_state, last_when = last_project()
-  if last_state == 'started':
-    is_running = last_id
+  stats = {}
+  accum = None
+  for tid, log in db('xrange', 'logs', '-', '+'):
+    log_project = Project(log.get('project'), log.get('action'), tid)
+    proj = log.get('project')
+    actn = log.get('action')
+    _time = stream_time(tid)
+    if project is not None and len(str(project)) > 0:
+      project = load_project(project)
+      if str(project.id) != proj:
+        continue
 
+    if isinstance(at, datetime.datetime) and _time <= at.timestamp():
+      continue
+
+    stats.setdefault(proj, 0)
+    if actn == 'started':
+      accum = _time
+    elif actn == 'stopped':
+      stats[proj] += _time-accum
+      accum = None
+
+  last_project = Project.last()
+  if last_project.is_running():
+    stats[str(last_project.id)] += int(now().timestamp()-last_project.when.timestamp())
+
+  if project is None:
+    for project.id in db('hkeys', 'projects'):
+      if isuuid(project.id):
+        stats.setdefault(project.id, 0)
+
+  return stats
+
+def post_report(stats:dict[str, float], args:argparse.Namespace) -> None:
   raise Exception('Implement me!')
 
-def mail_report(args:argparse.Namespace) -> None:
-  if args.since:
-    when = args.since
-  elif args.between:
-    when = args.between
-  else:
-    when = None
-
-  stats = get_stats(args.project, when)
-  is_running = None
-  last_id, last_name, last_state, last_when = last_project()
-  if last_state == 'started':
-    is_running = last_id
-
+def mail_report(stats:dict[str, float], args:argparse.Namespace) -> None:
   if args.format == 'text':
-    msg = text_format(stats, when, args.largest_scale, is_running, args.include_all)
+    msg = text_format(stats, when, args.largest_scale, args.include_all)
   elif args.format == 'csv':
-    msg = csv_format( stats, when, args.largest_scale, is_running, args.include_all)
+    msg = csv_format( stats, when, args.largest_scale, args.include_all)
 
   with smtplib.SMTP('localhost') as mc:
     mc.set_debuglevel(1)
     mc.sendmail('scott@viviotech.net', p.mailto, msg)
 
-def print_report(args:argparse.Namespace) -> None:
-  if args.since:
-    when = args.since
-  elif args.between:
-    when = args.between
-  else:
-    when = None
-
-  stats = get_stats(args.project, when)
-  is_running = None
-  last_id, last_name, last_state, last_when = last_project()
-  if last_state == 'started':
-    is_running = last_id
-
-  if args.format == 'text':
-    print(text_format(stats, when, args.largest_scale, is_running, args.include_all))
-  elif args.format == 'csv':
-    print(csv_format( stats, when, args.largest_scale, is_running, args.include_all))
-
 def _datetime(dtin:str) -> datetime.datetime:
   weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
   abbrev_weekdays = [day[:3] for day in weekdays]
   if dtin.isdigit():
-    return datetime.datetime.fromtimestamp(int(dtin))
+    return parse_timestamp(dtin)
   elif dtin == 'today':
     return datetime.datetime.strptime(f'{datetime.date.today().strftime("%F")} 00:00:00', '%Y-%m-%d %H:%M:%S')
   elif dtin == 'yesterday':
@@ -485,6 +581,7 @@ def pargs() -> argparse.Namespace:
   sho = showsub.add_parser('logs',     help='Show the project logs.')
   sho.add_argument('-p', '--project',                       nargs='+', metavar='NAME|UUID', default=None, help='Project name or uuid.')
   sho.add_argument('-s', '--since',         type=_datetime,            metavar='DATETIME',  default=None, help='Report details since this datetime.')
+  sho.add_argument('-t', '--timestamp',     action='store_true',                            default=False, help='Show the timestamp also (default: False).')
   sho.set_defaults(action='show_logs')
 
   shi = showsub.add_parser('id',       help='Show the project name from the provided id.')
@@ -502,7 +599,7 @@ def pargs() -> argparse.Namespace:
   rep.add_argument('-a', '--include_all',                   action='store_true',                                               default=False,  help='Display ALL projects including those without any tracked time.')
   rep.set_defaults(action='report')
 
-  hlp = sub.add_parser('help', help='Display help')
+  hlp = sub.add_parser('help', help='show this help message and exit')
   hlp.set_defaults(action='help')
 
   p.set_defaults(project=[], action='help')
@@ -511,7 +608,7 @@ def pargs() -> argparse.Namespace:
   if r.project is not None and isinstance(r.project, list) and len(r.project) > 0:
     r.project = ' '.join(r.project).strip().replace('\n', ' ')
 
-  if isuuid(r.project):
+  if not isinstance(r.project, UUID) and isuuid(r.project):
     r.project = UUID(r.project)
   debug(r)
 
@@ -523,38 +620,75 @@ def pargs() -> argparse.Namespace:
 def main() -> None:
   p = pargs()
   if p.action == 'show_id':
-    print(db('hget', 'projects', str(p.project)))
+    print(f"{db('hget', 'projects', str(p.project))!r}")
   elif p.action == 'show_last':
-    print('Last project: {last[1]!r}; action: {last[2]!r}; at: {last[3]}.'.format(last=last_project()))
+    last = Project.last()
+    if last.is_running():
+      colour = colors.fg.green
+    else:
+      colour = colors.fg.orange
+    print('Last project: {last.name!r}; action: {colour}{last.state!r}{rst}; at: {last.when}, id: {last.id}.'.format(last=last, colour=colour, rst=colors.reset))
   elif p.action == 'show_projects':
-    for pid, project in all_projects().items():
-      print(f'{pid}: {project}')
+    for project in all_projects():
+      last_project = Project.last()
+      if project == last_project and last_project.is_running():
+        print(f'{project.id}: {project.name} (currently running)')
+      else:
+        print(f'{project.id}: {project.name}')
   elif p.action == 'show_logs':
-    for tid, log in db('xrange', 'logs', '-', '+'):
-      log_id, log_project = load_project(log.get('project'))
+    if p.since is None:
+      start = '-'
+    else:
+      _ts = str(p.since.timestamp()).replace('.', '')[:13]
+      start = f'{_ts:0<13}-0'
+
+    for tid, log in db('xrange', 'logs', start, '+'):
+      log_project = Project(log.get('project'), log.get('action'), stream_time(tid))
+
+      _fmt = log_project.log_format
       if p.project is None:
-        print(f"{stream_time(tid)} action {log.get('action')!r} project {log_project!r}")
-      elif isinstance(p.project, UUID) and log_id == p.project:
-        print(f"{stream_time(tid)} action {log.get('action')!r} project {log_project!r}")
-      elif not isuuid(p.project) and log_id == UUID(db('hget', 'projects', p.project.casefold())):
-        print(f"{stream_time(tid)} action {log.get('action')!r} project {log_project!r}")
+        if p.timestamp:
+          _fmt = f'{tid:17} {log_project.log_format}'
+        print(_fmt)
+      else:
+        project = Project(p.project)
+        if log_project == project:
+          if p.timestamp:
+            _fmt = f'{tid:17} {log_project.log_format}'
+        print(_fmt)
+
   elif p.action == 'start':
-    start_project(p.project, p.at)
+    start_project(Project(p.project), p.at)
   elif p.action == 'stop':
-    stop_project(p.project, p.at)
+    stop_project(Project(p.project), p.at)
   elif p.action == 'rename':
-    rename(p.project, ' '.join(p.to).strip().replace('\n', ' '))
+    rename(Project(p.project), Project(' '.join(p.to).strip().replace('\n', ' ')))
   elif p.action == 'rm':
-    remove(p.project)
+    remove(Project(p.project))
   elif p.action == 'gui':
     gui()
   elif p.action == 'report':
-    if p.url:
-      post_report(p)
-    elif p.mailto:
-      mail_report(p)
+    if p.since:
+      when = args.since
+    elif p.between:
+      when = args.between
     else:
-      print_report(p)
+      when = None
+
+    if p.project is None:
+      stats = get_all_stats(when)
+    else:
+      stats = get_project_stats(p.project, when)
+
+
+    if p.url:
+      post_report(stats, p)
+    elif p.mailto:
+      mail_report(stats, p)
+    elif p.format == 'text':
+      print(text_format(stats, when, p.largest_scale, p.include_all))
+    elif p.format == 'csv':
+      print(csv_format( stats, when, p.largest_scale, p.include_all))
 
 if __name__ == '__main__':
   main()
