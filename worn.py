@@ -8,9 +8,11 @@ import redis
 import argparse
 import datetime
 from urllib.parse import urlparse
-from typing import *
 import re
 import io
+from typing import *
+
+now = datetime.datetime.now
 
 def db(cmd, key='', *args, **kw):
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
@@ -21,7 +23,13 @@ def db(cmd, key='', *args, **kw):
         return f(key, *args, **kw)
     else:
       return None
-now = datetime.datetime.now
+
+def hash_exists(key, hkey):
+  if db('exists', key):
+    return db('hexists', key, hkey)
+  else:
+    raise Exception(f"Key {key!r} doesn't exist")
+
 def parse_timestamp(tsin):
   if isinstance(tsin, (int, float)):
     return datetime.datetime.fromtimestamp(tsin)
@@ -37,7 +45,8 @@ def parse_timestamp(tsin):
       else:
         return datetime.datetime.fromtimestamp(float('.'.join([tsin[:10], tsin[10:13]])))
     elif len(tsin) > 10:
-      return datetime.datetime.fromtimestamp(float(f'{tsin:0<13}'))
+      _tsin = f'{tsin:0<13}'
+      return datetime.datetime.fromtimestamp(float('.'.join([_tsin[:10], _tsin[10:13]])))
     else:
       raise Exception(f'Invalid timestamp {tsin!r} supplied.')
   else:
@@ -109,31 +118,46 @@ class Project(object):
       debug(f"Project {nameorid!r} was empty.")
       return (None, None)
 
-    if isinstance(nameorid, UUID):
-      if db_exists('hexists', 'projects', str(nameorid)):
+    if isinstance(nameorid, Project):
+      self.id   = nameorid.id
+      self.name = nameorid.name
+      if self.is_last():
+        self.state = db('hget', 'last', 'state')
+        self.when  = parse_timestamp(db('hget', 'last', 'when'))
+    elif isinstance(nameorid, UUID):
+      if hash_exists('projects', str(nameorid)):
         self.id   = nameorid
         self.name = db('hget', 'projects', str(nameorid))
     elif isinstance(nameorid, str):
-      if isuuid(nameorid) and db_exists('hexists', 'projects', nameorid):
+      if nameorid.casefold().strip() == 'last':
+        if db('exists', 'last'):
+          last = db('hgetall', 'last')
+          self.id    = UUID(last.get('project'))
+          self.name  = db('hget', 'projects', str(self.id))
+          self.state = last.get('state', 'stopped')
+          self.when  = parse_timestamp(last.get('when'))
+        else:
+          self.id    = uuid4()
+          self.name  = 'last'
+          self.state = 'stopped'
+          self.when  = now()
+      elif isuuid(nameorid) and hash_exists('projects', nameorid):
         self.id   = UUID(nameorid)
         self.name = db('hget', 'projects', nameorid)
-      elif db_exists('hexists', 'projects', nameorid.casefold().strip()):
+      elif hash_exists('projects', nameorid.casefold().strip()):
         self.id   = UUID(db('hget', 'projects', nameorid.casefold().strip()))
-        self.name = nameorid
-      elif nameorid.casefold().strip() == 'last':
-        last_project = Project.last()
-        self.id    = last_project.id
-        self.name  = last_project.name
-        self.state = last_project.state
-        self.when  = last_project.when
+        self.name = db('hget', 'projects', str(self.id))
       else:
         self.id   = uuid4()
         self.name = nameorid
+        if isuuid(self.id) and isuuid(self.name):
+          raise Exception(f'Attempting to set the project id {self.id!r} to a uuid bad project name {self.name!r}!')
         db('hsetnx', 'projects', nameorid.casefold().strip(), str(self.id))
         db('hsetnx', 'projects', str(self.id), nameorid.strip())
     else:
-      debug(f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
-      raise Exception(f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
+      msg = f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.'
+      debug(msg)
+      raise Exception(msg)
 
   def __eq__(self, other):
     if isinstance(other, Project):
@@ -151,19 +175,52 @@ class Project(object):
   def __hash__(self):
     return self.id.int
 
-  @classmethod
-  def last(kind):
-    if not db('exists', 'last'):
-      return Project(uuid4(), 'stopped', now())
+  def __str__(self):
+    return f'<Project hash:{hash(self)} id: {self.id!r} name: {db("hget", "projects", str(self.id))!r} state: {self.state!r} when: {self.when.strftime("%a %F %T")!r}>'
 
-    last = db('hgetall', 'last')
-    if last.get('project') is None:
-      return Project(uuid4(), 'stopped', now())
+  @classmethod
+  def nearest_project_by_name(kind, project:str) -> set[str]:
+    matches = set([])
+    counts = [0, 0]
+    if project == 'last':
+      matches.add(Project('last'))
+      counts = [1, 1]
+    elif hash_exists('projects', project):
+      matches.add(Project(project))
+      counts = [1, 1]
+    elif hash_exists('projects', project.strip().casefold()):
+      matches.add(Project(project.strip().casefold()))
+      counts = [1, 1]
     else:
-      return Project(last.get('project'), last.get('state'), parse_timestamp(last.get('when')))
+      for label in db('hkeys', 'projects'):
+        counts[0] += 1
+        if len(label) < len(project):
+          continue
+        elif label == project or label.casefold() == project.casefold():
+          matches.add(label)
+          break
+        else:
+          matched = True
+          for i in range(len(project)):
+            counts[1] += 1
+            if project[i].casefold() != label[i].casefold():
+              matched = False
+              continue
+
+          if matched:
+            matches.add(label)
+    debug(f'counts {counts!r}')
+    return sorted([Project(match) for match in matches], key=lambda p: p.name.casefold())
+
+  @classmethod
+  def all(kind) -> list:
+    return [Project(UUID(pid)) for pid, project in sorted(db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
 
   def is_running(self):
-    return self.state == 'started'
+    return db('exists', 'last') and self.state == 'started'
+
+  def is_last(self):
+    return self == db('hget', 'last', 'project')
 
   @property
   def log_format(self):
@@ -175,6 +232,47 @@ class Project(object):
     r += f'id {self.id} project {self.name!r}'
     return r
 
+  def log(self, state:str, at:datetime.datetime=now()):
+    _ts = str(at.timestamp()).replace('.', '')[:13]
+    db('hsetnx', 'projects', str(self.id), self.name)
+    db('hsetnx', 'projects', self.name.casefold(), str(self.id))
+    db('xadd', 'logs', dict(project=str(self.id), state=state), id=f'{_ts:0<13}-*')
+    db('hset', 'last', mapping=dict(state=state, project=str(self.id), when=_ts))
+    db('save')
+
+  def stop(self, at:datetime.datetime=now()):
+    if self.is_running():
+      self.log('stopped', at)
+
+  def start(self, at:datetime.datetime=now()) -> None:
+    if not db('exists', 'begin'):
+      db('set', 'begun', str(now().timestamp()))
+      db('expire', 'begun', 3600)
+
+    Project('last').stop(at=at)
+    self.log('started', at)
+
+  def rename(self, new) -> None:
+    if not isinstance(new, Project):
+      raise Exception(f"Project {new!r} is the wrong type {type(new)!r}.")
+
+    db('hset', 'projects', str(self.id), new.name)
+    db('hdel', 'projects', self.name.casefold())
+    db('hset', 'projects', new.name.casefold(), str(self.id))
+    db('save')
+
+  def remove(self):
+    for timeid, log_project in db('xrange', 'logs', '-', '+'):
+      if self == log_project.get('project'):
+        db('xdel', 'logs', timeid)
+
+    if self.is_last():
+      db('del', 'last')
+
+    db('hdel', 'projects', self.name)
+    db('hdel', 'projects', str(self.id))
+    db('save')
+
 def debug(*msgs) -> None:
   for _ in msgs:
     print(_, file=sys.stderr)
@@ -183,12 +281,12 @@ def gui_action(event, cb:ttk.Combobox) -> None:
   button_state = event.widget.cget('text')
   project = Project(cb.get())
   if 'Start' in button_state:
-    start_project(project)
+    project.start()
 
-    cb['values'] = [project.name for project in all_projects()]
+    cb['values'] = [project.name for project in Project.all()]
     cb['width']  = len(max(_projects, key=len))-10
   elif button_state == 'Stop':
-    stop_project(project)
+    project.stop()
   else:
     debug(f"Unknown state {state!r}")
 
@@ -201,11 +299,11 @@ def gui() -> None:
   frm = ttk.LabelFrame(root, text='Project', underline=0, padding=11)
   frm.grid(sticky=(N, S, E, W))
 
-  _projects = [project.name for project in all_projects()]
+  _projects = [project.name for project in Project.all()]
   c = ttk.Combobox(frm, values=_projects, textvariable=proj, width=len(max(_projects, key=len))-10)
-  last_project = Project.last()
-  if last_project.is_running():
-    c.set(last_project.name)
+  
+  if (project := Project('last')).is_running():
+    c.set(project.name)
   c.grid(row=0, column=0, pady=7, columnspan=4, sticky=(E, W))
 
   hl = ttk.Label(frm, text='At time')
@@ -254,68 +352,6 @@ def gui() -> None:
 #  frm.rowconfigure(3,     weight=5)
 
   root.mainloop()
-
-def db_exists(cmd, key, *rest):
-  if not db('exists', key):
-    raise Exception(f"Key {key!r} doesn't exist")
-
-  return db(cmd, key, *rest)
-
-def log(project:Project, state:str, at:datetime.datetime=now()):
-  _ts = str(at.timestamp()).replace('.', '')[:13]
-  db('hsetnx', 'projects', str(project.id), project.name)
-  db('hsetnx', 'projects', project.name.casefold(), str(project.id))
-  db('xadd', 'logs', dict(project=str(project.id), state=state), id=f'{_ts:0<13}-*')
-  db('hset', 'last', mapping=dict(state=state, project=str(project.id), when=_ts))
-  db('save')
-
-def start_project(project:Project, at:datetime=now()) -> None:
-  if not isinstance(project, Project):
-    raise Exception(f"Project {project!r} is not the correct type")
-
-  if Project.last().is_running():
-    stop_project(Project.last(), at=at)
-  log(project, 'started', at)
-
-def stop_project(project:Project, at:datetime=now()) -> None:
-  if not isinstance(project, Project):
-    raise Exception(f"Project {project!r} is the wrong type {type(project)!r}.")
-
-  last_project = Project.last()
-  if project != last_project:
-    debug(f"The previous project {last_project.name!r} was not the same project specified {project.name!r}.")
-  elif project == last_project and not last_project.is_running():
-    debug(f"The previous project {last_project.name!r} has not started.")
-  else:
-    log(project, 'stopped', at)
-
-def rename(old:Project, new:Project) -> None:
-  if not isinstance(old, Project):
-    raise Exception(f"Project {old!r} is the wrong type {type(old)!r}.")
-  elif not isinstance(new, Project):
-    raise Exception(f"Project {new!r} is the wrong type {type(new)!r}.")
-
-  db('hset', 'projects', str(id), new)
-  db('hset', 'projects', new.casefold(), str(id))
-  db('save')
-
-def remove(project:Project) -> None:
-  if not isinstance(project, Project):
-    raise Exception(f"Project {project!r} is the wrong type {type(project)!r}.")
-
-  for timeid, log_project in db('xrange', 'logs', '-', '+'):
-    if log_project.get('project') == project:
-      db('xdel', 'logs', timeid)
-
-  if project == Project.last():
-    db('del', 'last')
-
-  db('hdel', 'projects', project.name)
-  db('hdel', 'projects', str(project.id))
-  db('save')
-
-def all_projects() -> list[Project]:
-  return [Project(UUID(pid)) for pid, project in sorted(db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
 
 def weeks_long(ts:int) -> int:
   return int(ts/(3600*24*7))
@@ -380,8 +416,7 @@ def csv_format(stats:dict[str, float], at:Union[datetime.datetime, None]=None, l
 
     r += f'{pid},'
     r += '"{0}",'.format(db('hget', 'projects', str(pid)))
-    last_project = Project.last()
-    if last_project.is_running() and last_project == pid:
+    if (last := Project('last')).is_running() and last == pid:
       r += 'true'
     else:
       r += 'false'
@@ -433,9 +468,8 @@ def simple_format(stats:dict[str, float], at:Union[datetime.datetime, None]=None
 
     r += f' id {project.id}'
     r += f' project {project.name!r}'
-    last_project = Project.last()
-    if last_project.is_running() and last_project == project:
-        r += '...and counting'
+    if project.is_last() and Project('last').is_running():
+        r += f' ...{colors.bg.blue}and counting{colors.reset}'
     r += "\n"
   return r
 
@@ -461,9 +495,8 @@ def get_project_stats(project:Project, at:Union[datetime.datetime, None]=None) -
       stats += parse_timestamp(tid).timestamp()-accum
       accum = 0
 
-  last_project = Project.last()
-  if project == last_project and last_project.is_running():
-    stats += int(now().timestamp()-last_project.when.timestamp())
+  if project.is_last() and project.is_running():
+    stats += int(now().timestamp()-project.when.timestamp())
 
   return {project: stats}
 
@@ -475,7 +508,7 @@ def get_all_stats(at:Union[datetime.datetime, None]=None) -> dict[Project, float
     _ts = str(at.timestamp()).replace('.', '')[:13]
     start = f'{_ts:0<13}-0'
 
-  for project in all_projects():
+  for project in Project.all():
     stats.setdefault(project, 0)
 
   for tid, log_project in db('xrange', 'logs', start, '+'):
@@ -504,9 +537,9 @@ def _datetime(dtin:str) -> datetime.datetime:
   abbrev_weekdays = [day[:3] for day in weekdays]
   if dtin.isdigit():
     return parse_timestamp(dtin)
-  elif dtin == 'today':
+  elif dtin.casefold() == 'today':
     return datetime.datetime.strptime(f'{datetime.date.today().strftime("%F")} 00:00:00', '%Y-%m-%d %H:%M:%S')
-  elif dtin == 'yesterday':
+  elif dtin.casefold() == 'yesterday':
     return datetime.datetime.strptime(f'{datetime.date.today().strftime("%F")} 00:00:00', '%Y-%m-%d %H:%M:%S') - datetime.timedelta(days=1)
   elif dtin.casefold() in weekdays:
     current_dow = now().weekday()
@@ -546,14 +579,14 @@ def email(s):
   return str(s)
 
 def pargs() -> argparse.Namespace:
-  p = argparse.ArgumentParser(description='Working on Right Now')
+  p = argparse.ArgumentParser(description='Working on Right Now', formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
   sub = p.add_subparsers(help='Various sub-commands')
   ui = sub.add_parser('gui', help='Show the gui')
   ui.set_defaults(action='gui')
 
   beg = sub.add_parser('start', help='Start a project')
   beg.add_argument('-a', '--at', type=_datetime, default=now(), metavar='DATETIME',  help='...the project at this specific time')
-  beg.add_argument('project',    nargs='+',     metavar='NAME|UUID', help='Project name or uuid.')
+  beg.add_argument('project',    nargs='+',     metavar='NAME|UUID',                 help='Project name or uuid.')
   beg.set_defaults(action='start')
 
   end = sub.add_parser('stop', help='Stop a project')
@@ -570,9 +603,13 @@ def pargs() -> argparse.Namespace:
   rm.add_argument('project', nargs='+', metavar='NAME|UUID', help='Project name or uuid.')
   rm.set_defaults(action='rm')
 
-  show = sub.add_parser('show', help='Modify the metadata')
+  stats = sub.add_parser('stat', help='Show the last status.')
+  stats.set_defaults(action='show_last')
+
+  show = sub.add_parser('show', help='Show some aspect of the system')
   showsub = show.add_subparsers()
-  shl = showsub.add_parser('last', help='Show the last project worked on and what we last did.')
+
+  shl = showsub.add_parser('last', help='Show the last status.')
   shl.set_defaults(action='show_last')
 
   shp = showsub.add_parser('projects', help='Show the available projects.')
@@ -589,13 +626,14 @@ def pargs() -> argparse.Namespace:
   shi.set_defaults(action='show_id')
 
   rep = sub.add_parser('report', help='Report the results of work done')
+  rep.add_argument('-l', '--largest_scale', type=str,       choices='w,d,h,m,s'.split(','),                                    default='h',      help='The largest component of time to display (default: "h"): w => Weeks; d => Days; h => Hours; m => Minutes; s => Seconds.')
+  rep.add_argument('-f', '--format',        type=str,       choices='simple,csv'.split(','),                                   default='simple', help='Output the report in this format (default: simple).')
   prep = rep.add_mutually_exclusive_group(required=False)
   prep.add_argument('-p', '--project',                       nargs='+',                      metavar='NAME|UUID',                                help='Project name or uuid.')
   prep.add_argument('-a', '--include_all',                   action='store_true',                                               default=False,   help='Display ALL projects including those without any tracked time.')
-  rep.add_argument('-s', '--since',         type=_datetime,                                 metavar='DATETIME',                                  help='Report details since this datetime.')
-  rep.add_argument('-b', '--between',       type=_datetime, nargs=2,                        metavar=('DATETIME', 'DATETIME'),                    help='Report details between these date and times.')
-  rep.add_argument('-l', '--largest_scale', type=str,       choices='w,d,h,m,s'.split(','),                                    default='h',      help='The largest component of time to display (default: "h"): w => Weeks; d => Days; h => Hours; m => Minutes; s => Seconds.')
-  rep.add_argument('-f', '--format',        type=str,       choices='simple,csv'.split(','),                                   default='simple', help='Output the report in this format (default: simple).')
+  trep = rep.add_mutually_exclusive_group(required=False)
+  trep.add_argument('-s', '--since',         type=_datetime,                                 metavar='DATETIME',                                  help='Report details since this datetime.')
+  trep.add_argument('-b', '--between',       type=_datetime, nargs=2,                        metavar=('DATETIME', 'DATETIME'),                    help='Report details between these date and times.')
   rrep = rep.add_mutually_exclusive_group(required=False)
   rrep.add_argument('-t', '--ticket',       type=int,                                                                          default=None,     help='Document the report to this ticket.')
   rrep.add_argument('-m', '--mailto',       type=email,                                                                        default=None,     help='Email the report to this user.')
@@ -624,22 +662,15 @@ def main() -> None:
   if p.action == 'show_id':
     print(f"{db('hget', 'projects', str(p.project))!r}")
   elif p.action == 'show_last':
-    last = Project.last()
-    if last:
-      if last.is_running():
-        colour = colors.fg.green
-      else:
-        colour = colors.fg.orange
-      print('Last project: {last.name!r}; state: {colour}{last.state!r}{rst}; at: {last.when}, id: {last.id}.'.format(last=last, colour=colour, rst=colors.reset))
-    else:
-      print('No last project running.')
+
+    last = Project('last')
+    print('Last project: {last.name!r}; state: {colour}{last.state!r}{rst}; at: {last.when}, id: {last.id}.'.format(last=last, colour=last.is_running() and colors.fg.green or colors.fg.orange, rst=colors.reset))
   elif p.action == 'show_projects':
-    for project in all_projects():
-      last_project = Project.last()
-      if project == last_project and last_project.is_running():
-        print(f'{project.id}: {project.name} (currently running)')
-      else:
-        print(f'{project.id}: {project.name}')
+    for project in Project.all():
+      fmt = f'{project.id}: {project.name}'
+      if project.is_last() and Project('last').is_running():
+        fmt += f' ({colors.underline}{colors.bg.blue}currently running{colors.reset})'
+      print(fmt)
   elif p.action == 'show_logs':
     if p.since is None:
       start = '-'
@@ -656,14 +687,49 @@ def main() -> None:
           _fmt = f'{tid:17} {log_project.log_format}'
         print(_fmt)
 
-  elif p.action == 'start':
-    start_project(Project(p.project), p.at)
-  elif p.action == 'stop':
-    stop_project(Project(p.project), p.at)
+  elif p.action in ['start', 'stop']:
+    projects = Project.nearest_project_by_name(p.project)
+    if len(projects) == 1:
+      f = getattr(projects.pop(), p.action)
+    elif len(projects) == 0:
+      debug(f'No project found matching the name or id: {p.project!r}.')
+      sys.exit(2)
+    else:
+      _prompt = '''Multiple projects found. Please choose the number of the matching project that you want to start? 
+0: quit/cancel
+'''
+      n = 1
+      for _project in projects:
+        _prompt += f'{n}: {_project.id}: {_project.name}\n'
+        n+=1
+      try:
+        project_number = input(_prompt)
+      except EOFError:
+        debug('Exiting')
+        sys.exit(0)
+      except KeyboardInterrupt:
+        debug('Exiting')
+        sys.exit(0)
+
+      if not ( project_number.isdigit() and project_number.isprintable() ):
+        debug('The value that you entered is not a number!')
+        sys.exit(4)
+
+      num = int(project_number)
+      if num == 0:
+        debug('You requested to cancel. Cancelling!')
+        sys.exit(0)
+
+      if num >= len(projects)+1:
+        debug('The number that you entered was not valid!')
+        sys.exit(4)
+
+      f = getattr(list(projects)[num-1], p.action)
+    f(p.at)
   elif p.action == 'rename':
-    rename(Project(p.project), Project(' '.join(p.to).strip().replace('\n', ' ')))
+    Project(p.project).rename(Project(' '.join(p.to).strip().replace('\n', ' ')))
   elif p.action == 'rm':
-    remove(Project(p.project))
+    Project(p.project).remove()
   elif p.action == 'gui':
     gui()
   elif p.action == 'report':
