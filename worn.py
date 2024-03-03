@@ -452,7 +452,7 @@ def csv_format(report:dict[str, float], at:Union[datetime.datetime, None]=None, 
     r += ''
   r += "\n"
 
-  for pid, total in report.items():
+  for project, total in report.items():
     if total == 0 and not include_all:
       continue
 
@@ -485,7 +485,7 @@ def csv_format(report:dict[str, float], at:Union[datetime.datetime, None]=None, 
 
     r += f'{project.id},'
     r += f'"{project.name}",'
-    if (last := Project.make('last')).is_running() and last == pid:
+    if (last := Project.make('last')).is_running() and last == project:
       r += 'true'
     else:
       r += 'false'
