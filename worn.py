@@ -130,6 +130,7 @@ class Project(object):
     if nameorid is None:
       debug(f"Project {nameorid!r} was empty.")
       return FauxProject()
+
     elif isinstance(nameorid, Sequence) and len(nameorid) == 0:
       debug(f"Project {nameorid!r} was empty.")
       return FauxProject()
@@ -341,14 +342,15 @@ def debug(*msgs) -> None:
 
 def gui_action(event, cb:ttk.Combobox) -> None:
   button_state = event.widget.cget('text')
-  project = Project.make(cb.get())
   if 'Start' in button_state:
+    project = Project.make(cb.get())
     project.start()
 
     _projects = [project.name for project in Project.all()]
     cb['values'] = _projects
     cb['width']  = len(max(_projects, key=len))-10
   elif button_state == 'Stop':
+    project = Project.make('last')
     project.stop()
   else:
     debug(f"Unknown state {state!r}")
@@ -546,8 +548,9 @@ def post_report(report:dict[str, float], args:argparse.Namespace) -> None:
   import requests
 
   for project, time in report.items():
-    debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={args.ticket}&time_spent={float(time)/60}&body="Time spent on {project.name}"')
-    requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=args.ticket, time_spent=float(time)/60, body=f'Time spent on {project.name}'))
+    _comment = args.comment.format(project=project)
+    debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={args.ticket}&time_spent={float(time)/60}&body="{_comment}"')
+    requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=args.ticket, time_spent=float(time)/60, body=_comment))
 
 def mail_report(report:dict[str, float], args:argparse.Namespace) -> None:
   if args.format == 'simple':
@@ -565,9 +568,9 @@ def _datetime(dtin:str) -> datetime.datetime:
   if dtin.isdigit():
     return parse_timestamp(dtin)
   elif dtin.casefold() == 'today':
-    return datetime.datetime.strptime(f'{datetime.date.today().strftime("%F")} 00:00:00', '%Y-%m-%d %H:%M:%S')
+    return datetime.datetime.now().strftime("%F 00:00:00")
   elif dtin.casefold() == 'yesterday':
-    return datetime.datetime.strptime(f'{datetime.date.today().strftime("%F")} 00:00:00', '%Y-%m-%d %H:%M:%S') - datetime.timedelta(days=1)
+    return datetime.datetime.today().strftime("%F 00:00:00") - datetime.timedelta(days=1)
   elif dtin.casefold() in weekdays:
     current_dow = now().weekday()
     if current_dow <= weekdays.index(dtin.casefold()):
@@ -653,17 +656,18 @@ def pargs() -> argparse.Namespace:
   shi.set_defaults(action='show_id')
 
   rep = sub.add_parser('report', help='Report the results of work done')
-  rep.add_argument('-l', '--largest_scale', type=str,       choices='w,d,h,m,s'.split(','),                                    default='h',      help='The largest component of time to display (default: "h"): w => Weeks; d => Days; h => Hours; m => Minutes; s => Seconds.')
-  rep.add_argument('-f', '--format',        type=str,       choices='simple,csv'.split(','),                                   default='simple', help='Output the report in this format (default: simple).')
+  rep.add_argument('-l', '--largest_scale', type=str,       choices='w,d,h,m,s'.split(','),                                    default='h',                            help='The largest component of time to display (default: "h"): w => Weeks; d => Days; h => Hours; m => Minutes; s => Seconds.')
+  rep.add_argument('-f', '--format',        type=str,       choices='simple,csv'.split(','),                                   default='simple',                       help='Output the report in this format (default: simple).')
+  rep.add_argument('-c', '--comment',       type=str,        nargs='+',                                                        default='Time spent on {project.name}', help='Comment to make in tickets when reporting to a ticket (default: "Time spent on {project.name}").')
   prep = rep.add_mutually_exclusive_group(required=False)
-  prep.add_argument('-p', '--project',                       nargs='+',                      metavar='NAME|UUID',                                help='Project name or uuid.')
-  prep.add_argument('-a', '--include_all',                   action='store_true',                                               default=False,   help='Display ALL projects including those without any tracked time.')
+  prep.add_argument('-p', '--project',                       nargs='+',                      metavar='NAME|UUID',                                                      help='Project name or uuid.')
+  prep.add_argument('-a', '--include_all',                   action='store_true',                                              default=False,                          help='Display ALL projects including those without any tracked time.')
   trep = rep.add_mutually_exclusive_group(required=False)
-  trep.add_argument('-s', '--since',         type=_datetime,                                 metavar='DATETIME',                                  help='Report details since this datetime.')
-  trep.add_argument('-b', '--between',       type=_datetime, nargs=2,                        metavar=('DATETIME', 'DATETIME'),                    help='Report details between these date and times.')
+  trep.add_argument('-s', '--since',         type=_datetime,                                 metavar='DATETIME',                                                       help='Report details since this datetime.')
+  trep.add_argument('-b', '--between',       type=_datetime, nargs=2,                        metavar=('DATETIME', 'DATETIME'),                                         help='Report details between these date and times.')
   rrep = rep.add_mutually_exclusive_group(required=False)
-  rrep.add_argument('-t', '--ticket',       type=int,                                                                          default=None,     help='Document the report to this ticket.')
-  rrep.add_argument('-m', '--mailto',       type=email,                                                                        default=None,     help='Email the report to this user.')
+  rrep.add_argument('-t', '--ticket',       type=int,                                                                          default=None,                           help='Document the report to this ticket.')
+  rrep.add_argument('-m', '--mailto',       type=email,                                                                        default=None,                           help='Email the report to this user.')
   rep.set_defaults(action='report')
 
   hlp = sub.add_parser('help', help='show this help message and exit')
@@ -707,8 +711,9 @@ def main() -> None:
     if len(projects) == 1:
       f = getattr(projects.pop(), p.action)
     elif len(projects) == 0:
-      debug(f'No project found matching the name or id: {p.project!r}.')
-      sys.exit(2)
+      debug(f'No project found matching the name or id: {p.project!r} at {p.at.strftime("%a %F %T")!r}. Creating a new project.')
+      project = Project.make(p.project)
+      f = getattr(project, p.action)
     else:
       _prompt = '''Multiple projects found. Please choose the number of the matching project that you want to start? 
 0: quit/cancel
