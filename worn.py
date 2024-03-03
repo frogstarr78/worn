@@ -24,65 +24,6 @@ class Project(object):
     self.state = state
     self.when = when
 
-  def __db(self, cmd, key='', *args, **kw):
-    with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-      if cmd.casefold() == 'shutdown':
-        return None
-
-      if hasattr(conn, cmd.casefold()) and callable(f := getattr(conn, cmd.casefold())):
-        if cmd in ['save', 'bgsave', 'ping']:
-          return f()
-        else:
-          return f(key, *args, **kw)
-      else:
-        return None
-
-  @classmethod
-  def make(kind, nameorid:Union[None, str, UUID], when:datetime.datetime=now()):
-    if nameorid is None:
-      debug(f"Project {nameorid!r} was empty.")
-      return FauxProject()
-    elif isinstance(nameorid, Sequence) and len(nameorid) == 0:
-      debug(f"Project {nameorid!r} was empty.")
-      return FauxProject()
-
-    if isinstance(nameorid, Project):
-      if nameorid.is_last():
-        return Project(nameorid.id, nameorid.name, self.__db('hget', 'last', 'state'), parse_timestamp(self.__db('hget', 'last', 'when')))
-      else:
-        return Project(nameorid.id, nameorid.name)
-
-    elif isinstance(nameorid, UUID):
-      if self.__db('exists', 'projects') and self.__db('hexists', 'projects', str(nameorid)):
-        return Project(nameorid, self.__db('hget', 'projects', str(nameorid)))
-      else:
-        raise Exception(f'Name or id {nameorid!r} is not found in the list of available projects.')
-
-    elif isinstance(nameorid, str):
-      if nameorid.casefold().strip() == 'last':
-        if self.__db('exists', 'last'):
-          last = self.__db('hgetall', 'last')
-          _id = UUID(last.get('project'))
-          return Project(_id, self.__db('hget', 'projects', str(_id)), last.get('state', 'stopped'), parse_timestamp(last.get('when', when)))
-        else:
-          return FauxProject()
-      elif isuuid(nameorid) and self.__db('exists', 'projects') and self.__db('hexists', 'projects', nameorid):
-        return Project(UUID(nameorid), self.__db('hget', 'projects', nameorid))
-      elif self.__db('exists', 'projects') and self.__db('hexists', 'projects', nameorid.casefold().strip()):
-        _id = UUID(self.__db('hget', 'projects', nameorid.casefold().strip()))
-        return Project(_id, self.__db('hget', 'projects', str(_id)))
-      else:
-        project = Project(uuid4(), nameorid)
-        project.add()
-        return project
-    elif isinstance(nameorid, dict):
-      _id = UUID(nameorid.get('project'))
-      return LogProject(_id, self.__db('hget', 'projects', str(_id)), nameorid.get('state'), when)
-    else:
-      msg = f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.'
-      debug(msg)
-      raise Exception(msg)
-
   def __eq__(self, other):
     if isinstance(other, Project):
       if isinstance(other.id, UUID):
@@ -106,7 +47,129 @@ class Project(object):
     return self.id.int
 
   def __str__(self):
-    return f'<Project hash:{hash(self)} id: {self.id!r} name: {self.__db("hget", "projects", str(self.id))!r} state: {self.state!r} when: {self.when.strftime("%a %F %T")!r}>'
+    return f'<Project hash:{hash(self)} id: {self.id!r} name: {Project._db("hget", "projects", str(self.id))!r} state: {self.state!r} when: {self.when.strftime("%a %F %T")!r}>'
+
+  def log_format(self):
+    r = f'{parse_timestamp(self.when).isoformat(" ", timespec="seconds")} '
+    if self.is_running():
+      r += f'state {colors.fg.green}{self.state!r}{colors.reset} '
+    else:
+      r += f'state {colors.fg.orange}{self.state!r}{colors.reset} '
+    r += f'id {self.id} project {self.name!r}'
+    return r
+
+  def is_running(self):
+    return Project._db('exists', 'last') and self.state == 'started'
+
+  def is_last(self):
+    return self == Project._db('hget', 'last', 'project')
+
+  def add(self):
+    Project._db('hsetnx', 'projects', self.name.casefold().strip(), str(self.id))
+    Project._db('hsetnx', 'projects', str(self.id), self.name.strip())
+
+  def log(self, state:str, at:datetime.datetime=now()):
+    _ts = str(at.timestamp()).replace('.', '')[:13]
+    Project._db('hsetnx', 'projects', str(self.id), self.name)
+    Project._db('hsetnx', 'projects', self.name.casefold(), str(self.id))
+    Project._db('xadd', 'logs', dict(project=str(self.id), state=state), id=f'{_ts:0<13}-*')
+    Project._db('hset', 'last', mapping=dict(state=state, project=str(self.id), when=_ts))
+    Project._db('save')
+
+  def stop(self, at:datetime.datetime=now()):
+    if self.is_running():
+      self.log('stopped', at)
+
+  def start(self, at:datetime.datetime=now()) -> None:
+    Project._db('setnx', 'begun', str(now().timestamp()))
+    Project._db('expire', 'begun', 3600, 'NX')
+
+    Project.make('last').stop(at=at)
+    self.log('started', at)
+
+  def rename(self, new) -> None:
+    if not isinstance(new, Project):
+      raise Exception(f"Project {new!r} is the wrong type {type(new)!r}.")
+
+    Project._db('hset', 'projects', str(self.id), new.name)
+    Project._db('hdel', 'projects', self.name.casefold())
+    Project._db('hset', 'projects', new.name.casefold(), str(self.id))
+    Project._db('save')
+
+  def remove(self):
+    for timeid, log_project in Project._db('xrange', 'logs', '-', '+'):
+      if self == log_project.get('project'):
+        Project._db('xdel', 'logs', timeid)
+
+    if self.is_last():
+      Project._db('del', 'last')
+
+    Project._db('hdel', 'projects', self.name)
+    Project._db('hdel', 'projects', str(self.id))
+    Project._db('save')
+
+  @classmethod
+  def _db(kind, cmd, key='', *args, **kw):
+    with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+      if int(conn.info('default').get('redis_version', '0')[0]) < 7:
+        raise Exception('This software requires version 7+ of Redis.')
+
+      if cmd.casefold() == 'shutdown':
+        return None
+
+      if hasattr(conn, cmd.casefold()) and callable(f := getattr(conn, cmd.casefold())):
+        if cmd in ['save', 'bgsave', 'ping']:
+          return f()
+        else:
+          return f(key, *args, **kw)
+      else:
+        return None
+
+  @classmethod
+  def make(kind, nameorid:Union[None, str, UUID], when:datetime.datetime=now()):
+    if nameorid is None:
+      debug(f"Project {nameorid!r} was empty.")
+      return FauxProject()
+    elif isinstance(nameorid, Sequence) and len(nameorid) == 0:
+      debug(f"Project {nameorid!r} was empty.")
+      return FauxProject()
+
+    if isinstance(nameorid, Project):
+      if nameorid.is_last():
+        return Project(nameorid.id, nameorid.name, Project._db('hget', 'last', 'state'), parse_timestamp(Project._db('hget', 'last', 'when')))
+      else:
+        return Project(nameorid.id, nameorid.name)
+
+    elif isinstance(nameorid, UUID):
+      if Project._db('exists', 'projects') and Project._db('hexists', 'projects', str(nameorid)):
+        return Project(nameorid, Project._db('hget', 'projects', str(nameorid)))
+      else:
+        raise Exception(f'Name or id {nameorid!r} is not found in the list of available projects.')
+
+    elif isinstance(nameorid, str):
+      if nameorid.casefold().strip() == 'last':
+        if Project._db('exists', 'last'):
+          last = Project._db('hgetall', 'last')
+          _id = UUID(last.get('project'))
+          return Project(_id, Project._db('hget', 'projects', str(_id)), last.get('state', 'stopped'), parse_timestamp(last.get('when', when)))
+        else:
+          return FauxProject()
+      elif isuuid(nameorid) and Project._db('exists', 'projects') and Project._db('hexists', 'projects', nameorid):
+        return Project(UUID(nameorid), Project._db('hget', 'projects', nameorid))
+      elif Project._db('exists', 'projects') and Project._db('hexists', 'projects', nameorid.casefold().strip()):
+        _id = UUID(Project._db('hget', 'projects', nameorid.casefold().strip()))
+        return Project(_id, Project._db('hget', 'projects', str(_id)))
+      else:
+        project = Project(uuid4(), nameorid)
+        project.add()
+        return project
+    elif isinstance(nameorid, dict):
+      _id = UUID(nameorid.get('project'))
+      return LogProject(_id, Project._db('hget', 'projects', str(_id)), nameorid.get('state'), when)
+    else:
+      msg = f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.'
+      debug(msg)
+      raise Exception(msg)
 
   @classmethod
   def nearest_project_by_name(kind, project:str) -> set[str]:
@@ -115,14 +178,14 @@ class Project(object):
     if project == 'last':
       matches.add(Project.make('last'))
       counts = [1, 1]
-    elif self.__db('exists', 'projects') and self.__db('hexists', 'projects', project):
+    elif Project._db('exists', 'projects') and Project._db('hexists', 'projects', project):
       matches.add(Project.make(project))
       counts = [1, 1]
-    elif self.__db('exists', 'projects') and self.__db('hexists', 'projects', project.strip().casefold()):
+    elif Project._db('exists', 'projects') and Project._db('hexists', 'projects', project.strip().casefold()):
       matches.add(Project.make(project.strip().casefold()))
       counts = [1, 1]
     else:
-      for label in self.__db('hkeys', 'projects'):
+      for label in Project._db('hkeys', 'projects'):
         counts[0] += 1
         if len(label) < len(project):
           continue
@@ -144,66 +207,7 @@ class Project(object):
 
   @classmethod
   def all(kind) -> list:
-    return [Project.make(UUID(pid)) for pid, project in sorted(self.__db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
-
-  def log_format(self):
-    r = f'{parse_timestamp(self.when).isoformat(" ", timespec="seconds")} '
-    if self.is_running():
-      r += f'state {colors.fg.green}{self.state!r}{colors.reset} '
-    else:
-      r += f'state {colors.fg.orange}{self.state!r}{colors.reset} '
-    r += f'id {self.id} project {self.name!r}'
-    return r
-
-  def is_running(self):
-    return self.__db('exists', 'last') and self.state == 'started'
-
-  def is_last(self):
-    return self == self.__db('hget', 'last', 'project')
-
-  def add(self):
-    self.__db('hsetnx', 'projects', self.name.casefold().strip(), str(self.id))
-    self.__db('hsetnx', 'projects', str(self.id), self.name.strip())
-
-  def log(self, state:str, at:datetime.datetime=now()):
-    _ts = str(at.timestamp()).replace('.', '')[:13]
-    self.__db('hsetnx', 'projects', str(self.id), self.name)
-    self.__db('hsetnx', 'projects', self.name.casefold(), str(self.id))
-    self.__db('xadd', 'logs', dict(project=str(self.id), state=state), id=f'{_ts:0<13}-*')
-    self.__db('hset', 'last', mapping=dict(state=state, project=str(self.id), when=_ts))
-    self.__db('save')
-
-  def stop(self, at:datetime.datetime=now()):
-    if self.is_running():
-      self.log('stopped', at)
-
-  def start(self, at:datetime.datetime=now()) -> None:
-    self.__db('setnx', 'begun', str(now().timestamp()))
-    self.__db('expire', 'begun', 3600, 'NX')
-
-    Project.make('last').stop(at=at)
-    self.log('started', at)
-
-  def rename(self, new) -> None:
-    if not isinstance(new, Project):
-      raise Exception(f"Project {new!r} is the wrong type {type(new)!r}.")
-
-    self.__db('hset', 'projects', str(self.id), new.name)
-    self.__db('hdel', 'projects', self.name.casefold())
-    self.__db('hset', 'projects', new.name.casefold(), str(self.id))
-    self.__db('save')
-
-  def remove(self):
-    for timeid, log_project in self.__db('xrange', 'logs', '-', '+'):
-      if self == log_project.get('project'):
-        self.__db('xdel', 'logs', timeid)
-
-    if self.is_last():
-      self.__db('del', 'last')
-
-    self.__db('hdel', 'projects', self.name)
-    self.__db('hdel', 'projects', str(self.id))
-    self.__db('save')
+    return [Project.make(UUID(pid)) for pid, project in sorted(Project._db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
 
 class FauxProject(Project):
   def __init__(self):
@@ -218,7 +222,7 @@ class LogProject(Project):
     self.serial = when.split('-')[:1]
 
   def __str__(self):
-    return f'<LogProject hash:{hash(self)} id: {self.id!r} serial: {self.serial} name: {self.__db("hget", "projects", str(self.id))!r} state: {self.state!r} when: {self.when.strftime("%a %F %T")!r}>'
+    return f'<LogProject hash:{hash(self)} id: {self.id!r} serial: {self.serial} name: {Project._db("hget", "projects", str(self.id))!r} state: {self.state!r} when: {self.when.strftime("%a %F %T")!r}>'
 
   def log_format(self, with_timestamp=False):
     if with_timestamp:
@@ -235,7 +239,7 @@ class LogProject(Project):
       start = f'{_ts:0<13}-0'
 
     r = []
-    for tid, project in self.__db('xrange', 'logs', start, '+'):
+    for tid, project in Project._db('xrange', 'logs', start, '+'):
       if matching is None:
         r.append(Project.make(project, when=tid))
       elif (log := Project.make(project, when=tid)) == matching:
