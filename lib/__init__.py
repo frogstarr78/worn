@@ -2,41 +2,11 @@ import sys
 from uuid import uuid4, UUID
 import redis
 import argparse
-import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlparse
 import re
 import io
 from typing import *
-
-now = datetime.datetime.now
-
-def parse_timestamp(tsin):
-  if isinstance(tsin, (int, float)):
-    return datetime.datetime.fromtimestamp(tsin)
-  elif isinstance(tsin, datetime.datetime):
-    return tsin
-  elif isinstance(tsin, str):
-    if '-' in tsin:
-      if len(time_parts := tsin.split('-')) == 2:
-        tsin = time_parts[0]
-      else:
-        try:
-          return datetime.datetime.strptime(tsin, '%Y-%m-%d %H:%M:%S')
-        except:
-          return datetime.datetime.strptime(tsin, '%a %Y-%m-%d %H:%M:%S')
-
-    if len(tsin) >= 13:
-      if '.' in tsin[:13]:
-        return datetime.datetime.fromtimestamp(float(tsin[:13]))
-      else:
-        return datetime.datetime.fromtimestamp(float('.'.join([tsin[:10], tsin[10:13]])))
-    elif len(tsin) > 10:
-      _tsin = f'{tsin:0<13}'
-      return datetime.datetime.fromtimestamp(float('.'.join([_tsin[:10], _tsin[10:13]])))
-    else:
-      raise Exception(f'Invalid timestamp {tsin!r} supplied.')
-  else:
-    raise Exception(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
 
 def isuuid(s:str):
   if isinstance(s, UUID): return True
@@ -48,39 +18,76 @@ def debug(*msgs) -> None:
   for _ in msgs:
     print(_, file=sys.stderr)
 
-def _datetime(dtin:str) -> datetime.datetime:
+now = datetime.now
+
+def istimestamp_id(s:str):
+  return isinstance(s, str) and re.search(r'^\d{13}-(\d+|\*)$', s)
+
+def parse_timestamp(tsin):
+  if isinstance(tsin, (int, float)):
+    return datetime.fromtimestamp(tsin)
+  elif isinstance(tsin, datetime):
+    return tsin
+  elif isinstance(tsin, list):
+    return parse_timestamp(' '.join(tsin))
+  elif isinstance(tsin, str):
+    if '-' in tsin:
+      if len(time_parts := tsin.split('-')) == 2:
+        tsin = time_parts[0]
+      else:
+        try:
+          return datetime.strptime(tsin, '%Y-%m-%d %H:%M:%S')
+        except:
+          return datetime.strptime(tsin, '%a %Y-%m-%d %H:%M:%S')
+
+    if len(tsin) >= 13:
+      if '.' in tsin[:13]:
+        return datetime.fromtimestamp(float(tsin[:13]))
+      else:
+        return datetime.fromtimestamp(float('.'.join([tsin[:10], tsin[10:13]])))
+    elif len(tsin) > 10:
+      _tsin = f'{tsin:0<13}'
+      return datetime.fromtimestamp(float('.'.join([_tsin[:10], _tsin[10:13]])))
+    else:
+      raise Exception(f'Invalid timestamp {tsin!r} supplied.')
+  else:
+    raise Exception(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
+
+def _datetime(dtin:str) -> datetime:
   weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
   abbrev_weekdays = [day[:3] for day in weekdays]
   if dtin.isdigit():
     return parse_timestamp(dtin)
+  elif dtin.casefold() == 'now':
+    return now()
   elif dtin.casefold() == 'today':
-    return datetime.datetime.now().strftime("%F 00:00:00")
+    return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S')
   elif dtin.casefold() == 'yesterday':
-    return datetime.datetime.now().strftime("%F 00:00:00") - datetime.timedelta(days=1)
+    return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=1)
   elif dtin.casefold() in weekdays:
     current_dow = now().weekday()
     if current_dow <= weekdays.index(dtin.casefold()):
-      return now() - datetime.timedelta(days=7 - (weekdays.index(dtin.casefold()) - current_dow))
+      return now() - timedelta(days=7 - (weekdays.index(dtin.casefold()) - current_dow))
     else:
-      return now() - datetime.timedelta(days=current_dow - weekdays.index(dtin.casefold()))
+      return now() - timedelta(days=current_dow - weekdays.index(dtin.casefold()))
   elif dtin.casefold() in abbrev_weekdays:
     current_dow = now().weekday()
     if current_dow <= abbrev_weekdays.index(dtin.casefold()):
-      return now() - datetime.timedelta(days=7 - (abbrev_weekdays.index(dtin.casefold()) - current_dow))
+      return now() - timedelta(days=7 - (abbrev_weekdays.index(dtin.casefold()) - current_dow))
     else:
-      return now() - datetime.timedelta(days=current_dow - abbrev_weekdays.index(dtin.casefold()))
+      return now() - timedelta(days=current_dow - abbrev_weekdays.index(dtin.casefold()))
   elif ':' in dtin and len(hrs_mins := dtin.split(':')) == 2 and all(map(str.isdigit, hrs_mins)) and 0 <= int(hrs_mins[0]) < 24 and 0 <= int(hrs_mins[1]) < 60:
-    return datetime.datetime.strptime(f'{datetime.date.today().strftime("%F")} {hrs_mins[0]}:{hrs_mins[1]}', '%Y-%m-%d %H:%M')
+    return datetime.strptime(f'{now():%F} {hrs_mins[0]}:{hrs_mins[1]}', '%Y-%m-%d %H:%M')
   elif ':' in dtin and len(hrs_mins_secs := dtin.split(':')) == 3 and all(map(str.isdigit, hrs_mins_secs)) and 0 <= int(hrs_mins[0]) < 24 and 0 <= int(hrs_mins[1]) < 60 and 0 <= int(hrs_mins[2]) < 60:
-    return datetime.datetime.strptime(f'{datetime.date.today().strftime("%F")} {hrs_mins_secs[0]}:{hrs_mins_secs[1]}:{hrs_mins_secs[2]}', '%Y-%m-%d %H:%M:%S')
+    return datetime.strptime(f'{now():%F} {hrs_mins_secs[0]}:{hrs_mins_secs[1]}:{hrs_mins_secs[2]}', '%Y-%m-%d %H:%M:%S')
   else:
     if ' ' in dtin:
       if dtin.casefold().endswith('am') or dtin.casefold().endswith('pm'):
-        return datetime.datetime.strptime(dtin, '%Y-%m-%d %I:%M:%S %p')
+        return datetime.strptime(dtin, '%Y-%m-%d %I:%M:%S %p')
       else:
-        return datetime.datetime.strptime(dtin, '%Y-%m-%d %H:%M:%S')
+        return datetime.strptime(dtin, '%Y-%m-%d %H:%M:%S')
     else:
-      return datetime.datetime.strptime(dtin, '%Y-%m-%d')
+      return datetime.strptime(dtin, '%Y-%m-%d')
 
 def email(s):
   if '@' not in s:
@@ -118,6 +125,11 @@ def parse_args() -> argparse.Namespace:
   rm = sub.add_parser('rm', help='Remove a project')
   rm.add_argument('project', nargs='+', metavar='NAME|UUID', help='Project name or uuid.')
   rm.set_defaults(action='rm')
+
+  edit = sub.add_parser('edit', help='Change the recorded time of a log entry.')
+  edit.add_argument('at', type=_datetime, metavar='TIMESTAMP_ID|DATETIME', help='The original log entry time to change.')
+  edit.add_argument('to', type=_datetime, metavar='DATETIME',              help='The updated time to set.')
+  edit.set_defaults(action='edit')
 
   pstat = sub.add_parser('stat', help='Show the last status.')
   pstat.set_defaults(action='show_last')

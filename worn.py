@@ -90,6 +90,15 @@ def main() -> None:
       report.mail(p)
     else:
       report.print(p.format)
+  elif p.action == 'edit':
+    all_logs = LogProject.all(since=p.at)
+
+    if all_logs[1].when < p.to:
+      raise Exception(f"The first log entry {all_logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{p.to:%F %T}'.\nThis is unacceptable. Failing.")
+
+    all_logs[0].change_time(p.to)
+    for project in all_logs[1:]:
+      project.update_serial(p.to)
 
 if __name__ == '__main__':
   main()

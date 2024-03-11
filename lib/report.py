@@ -3,7 +3,7 @@ from .colors import colors
 from .project import Project, LogProject
 
 class Report(object):
-  def __init__(self, data:dict[str, float], at:Union[datetime.datetime, None]=None, scale:str='h', include_all:bool=False, show_header:bool=True):
+  def __init__(self, data:dict[str, float], at:Union[datetime, None]=None, scale:str='h', include_all:bool=False, show_header:bool=True):
     self.data = data
     self.at = at
     self.scale = scale
@@ -45,7 +45,7 @@ class Report(object):
   def __simple_format(self) -> str:
     if self.show_header:
       r = 'Time spent report'
-      r += isinstance(self.at, datetime.datetime) and f' since: {self.at.strftime("%a %F %T")}' or ':'
+      r += isinstance(self.at, datetime) and f' since: {self.at.strftime("%a %F %T")}' or ':'
       r += "\n"
     else:
       r = ''
@@ -85,7 +85,7 @@ class Report(object):
     elif self.scale == 's': pass
 
     r += 'total (in seconds),id,project,running'
-    r += isinstance(self.at, datetime.datetime) and ',since' or ''
+    r += isinstance(self.at, datetime) and ',since' or ''
     r += "\n"
 
     for project, total in self.data.items():
@@ -101,7 +101,7 @@ class Report(object):
       r += f'{int(total)},{project:id},"{project:name}",'
       r += (last := Project.make('last')).is_running() and last == project and 'true' or 'false'
 
-      r += isinstance(self.at, datetime.datetime) and f',{self.at.strftime("%a %F %T")}' or ''
+      r += isinstance(self.at, datetime) and f',{self.at.strftime("%a %F %T")}' or ''
       r += "\n"
 
     return r
