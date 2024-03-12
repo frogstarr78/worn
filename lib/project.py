@@ -68,7 +68,7 @@ class Project(object):
 
   def log(self, state:str, at:datetime=now()) -> None:
     self.add()
-    LogProject.add(self, at)
+    LogProject.add(self, state, at)
 
   def stop(self, at:datetime=now()) -> None:
     if self.is_running():
@@ -257,15 +257,15 @@ class LogProject(Project):
       return super().log_format()
 
   def add(self, at:datetime) -> None:
-    LogProject.add(self, at)
+    LogProject.add(self, self.state, at)
 
   def remove(self) -> None:
     Project._db('xdel', 'logs', self.timestamp_id)
 
   @classmethod
-  def add(kind, project:Project, at:datetime) -> None:
+  def add(kind, project:Project, state:str, at:datetime) -> None:
     _ts = str(at.timestamp()).replace('.', '')[:13]
-    Project._db('xadd', 'logs', dict(project=str(project.id), state=project.state), id=f'{_ts:0<13}-*')
+    Project._db('xadd', 'logs', dict(project=str(project.id), state=state), id=f'{_ts:0<13}-*')
     Project._db('save')
 
   @classmethod
@@ -307,7 +307,7 @@ class LogProject(Project):
     return stats
 
   @classmethod
-  def edit(kind, starting:datetime, to:datetime, reason:str) -> None:
+  def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
     version_id = uuid4()
     new_key = f'logs-{str(version_id)}'
     Project._db('hset', 'versions', new_key, reason)

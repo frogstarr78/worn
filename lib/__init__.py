@@ -128,9 +128,11 @@ def parse_args() -> argparse.Namespace:
   rm.set_defaults(action='rm')
 
   edit = sub.add_parser('edit', help='Change the recorded time of a log entry.')
-  edit.add_argument('at', type=_datetime, metavar='TIMESTAMP_ID|DATETIME', help='The original log entry time to change.')
-  edit.add_argument('to', type=_datetime, metavar='DATETIME',              help='The updated time to set.')
-  edit.add_argument('reason', type=str, nargs='+', metavar='REASON',       help='Reason for the change in time.')
+  edit.add_argument('at', type=_datetime, metavar='TIMESTAMP_ID|DATETIME',         help='The original log entry time to change.')
+  edit.add_argument('-s', '--state',  type=str, choices=('started', 'stopped'),    help='Change the log entry to this state.')
+  edit.add_argument('-p', '--project', type=str,                                   help='Change the log entry to this project.')
+  edit.add_argument('-t', '--to',     type=_datetime,      metavar='DATETIME',     help='The updated time to set.')
+  edit.add_argument('-r', '--reason', type=str, nargs='+', metavar='REASON',       help='Reason for the change in time.')
   edit.set_defaults(action='edit')
 
   pstat = sub.add_parser('stat', help='Show the last status.')

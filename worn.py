@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import sys
 from lib import parse_args, debug
 from lib.project import Project, LogProject
 from lib.report import Report
@@ -92,15 +93,24 @@ def main() -> None:
       report.print(p.format)
   elif p.action == 'edit':
 
-    logs = LogProject.find(since=p.at, count=2)
+    if p.to:
+      if p.reason is None:
+        debug('You are required to provide a reason when changing the time of an entry. Please retry the last command while adding a -r|--reason argument.')
+        sys.exit(1)
 
-    if len(logs) > 1:
-      if logs[0].when == logs[1].when:
-        pass
-      elif all_logs[1].when < p.to:
-        raise Exception(f"The first log entry {all_logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{p.to:%F %T}'.\nThis is unacceptable. Failing.")
+      logs = LogProject.find(since=p.at, count=2)
 
-    LogProject.edit(p.at, p.to, ' '.join(p.reason))
+      if len(logs) > 1:
+        if logs[0].when == logs[1].when:
+          pass
+        elif all_logs[1].when < p.to:
+          raise Exception(f"The first log entry {all_logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{p.to:%F %T}'.\nThis is unacceptable. Failing.")
+
+      LogProject.edit_log_time(p.at, p.to, ' '.join(p.reason))
+    elif p.state:
+      pass
+    elif p.project:
+      pass
 
 if __name__ == '__main__':
   main()
