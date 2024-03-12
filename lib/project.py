@@ -43,8 +43,8 @@ class Project(object):
       return f'{self.name}'
     elif 'plain' in fmt_spec:
       return f'{self.name.casefold()}'
-
-    raise ValueError('Unknown specifier for Project.')
+    else:
+      return super().__format__(fmt_spec)
 
   def log_format(self):
     r = f'{parse_timestamp(self.when).isoformat(" ", timespec="seconds")} '
@@ -93,7 +93,7 @@ class Project(object):
     Project._db('save')
 
   def remove(self):
-    for log_project in LogProject.all(matching=self):
+    for log_project in LogProject.find(matching=self):
       log_project.remove()
 
     Project._db('hdel', 'projects', self.name)
@@ -240,7 +240,11 @@ class LogProject(Project):
   def __init__(self, id:UUID, name:str, state:str='stopped', when:str=''):
     super().__init__(id, name, state, parse_timestamp(when))
     self.timestamp_id = when
-    self.serial = when.split('-')[1]
+    if isinstance(when, str):
+      self.serial = int(when.split('-')[1])
+    else:
+      self.serial = 0
+
 
   def __str__(self):
     return f'<LogProject hash:{hash(self): >20} id: {str(self.id)!r} state: {self.state!r} timestamp_id: {self.timestamp_id: >16} serial: {self.serial: >3} when: "{self.when:%a %F %T}" name: {Project._db("hget", "projects", str(self.id))!r}>'
@@ -254,19 +258,11 @@ class LogProject(Project):
     else:
       return super().log_format()
 
-  def change_time(self, to):
-    self.remove()
-    self.log(self.state, to)
-
-  def update_serial(self):
-    new = LogProject(self.id, self,name, self.state, '{self.timestamp_id.split('-')[0]}-{self.serial+1}')
-    return new
-
   def remove(self):
     Project._db('xdel', 'logs', self.timestamp_id)
 
   @classmethod
-  def all(kind, matching=None, since=None):
+  def find(kind, matching:Union[str, None]=None, since:Union[datetime, None]=None, count:Union[int, None]=None, _version:Union[str, UUID, None]=None) -> list:
     if since is None:
       start = '-'
     elif isinstance(since, str) and istimestamp_id(since):
@@ -275,8 +271,12 @@ class LogProject(Project):
       _ts = str(parse_timestamp(since).timestamp()).replace('.', '')[:13]
       start = f'{_ts.lstrip():0<13}-0'
 
+    key = 'logs'
+    if _version is not None:
+      key = f'logs-{str(_version)}'
+
     r = []
-    for tid, project in Project._db('xrange', 'logs', start, '+'):
+    for tid, project in Project._db('xrange', key, start, '+', count=count):
       log = Project.make(project, when=tid)
       if matching is None or log == matching:
         r.append(log)
@@ -298,3 +298,18 @@ class LogProject(Project):
     if ( matching is None or last == matching ) and last.is_running():
       stats[last] += int(now().timestamp()-last.when.timestamp())
     return stats
+
+  @classmethod
+  def edit(kind, starting:datetime, to:datetime, reason:str) -> None:
+    version_id = uuid4()
+    new_key = f'logs-{str(version_id)}'
+    Project._db('hset', 'versions', new_key, reason)
+    Project._db('rename', 'logs', new_key)
+
+    for log in LogProject.find(_version=version_id):
+      if log.when >= starting:
+        _log = LogProject(log.id, log.name, log.state, to)
+        _log.log(log.state, to)
+      else:
+        _log = LogProject(log.id, log.name, log.state, log.when)
+        _log.log(log.state, log.when)

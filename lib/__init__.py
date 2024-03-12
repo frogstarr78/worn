@@ -129,6 +129,7 @@ def parse_args() -> argparse.Namespace:
   edit = sub.add_parser('edit', help='Change the recorded time of a log entry.')
   edit.add_argument('at', type=_datetime, metavar='TIMESTAMP_ID|DATETIME', help='The original log entry time to change.')
   edit.add_argument('to', type=_datetime, metavar='DATETIME',              help='The updated time to set.')
+  edit.add_argument('reason', type=str, nargs='+', metavar='REASON',       help='Reason for the change in time.')
   edit.set_defaults(action='edit')
 
   pstat = sub.add_parser('stat', help='Show the last status.')

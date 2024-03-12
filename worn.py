@@ -21,7 +21,7 @@ def main() -> None:
         fmt += f' ({colors.underline}{colors.bg.blue}currently running{colors.reset})'
       print(fmt)
   elif p.action == 'show_logs':
-    for log in LogProject.all(p.project, p.since):
+    for log in LogProject.find(p.project, p.since):
       print(log.log_format(p.timestamp))
 
   elif p.action in ['start', 'stop']:
@@ -91,14 +91,16 @@ def main() -> None:
     else:
       report.print(p.format)
   elif p.action == 'edit':
-    all_logs = LogProject.all(since=p.at)
 
-    if all_logs[1].when < p.to:
-      raise Exception(f"The first log entry {all_logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{p.to:%F %T}'.\nThis is unacceptable. Failing.")
+    logs = LogProject.find(since=p.at, count=2)
 
-    all_logs[0].change_time(p.to)
-    for project in all_logs[1:]:
-      project.update_serial(p.to)
+    if len(logs) > 1:
+      if logs[0].when == logs[1].when:
+        pass
+      elif all_logs[1].when < p.to:
+        raise Exception(f"The first log entry {all_logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{p.to:%F %T}'.\nThis is unacceptable. Failing.")
+
+    LogProject.edit(p.at, p.to, ' '.join(p.reason))
 
 if __name__ == '__main__':
   main()
