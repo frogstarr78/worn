@@ -30,7 +30,7 @@ class Project(object):
   def __sub__(self, other):
     return self.when.timestamp() - other.when.timestamp()
 
-  def __hash__(self):
+  def __hash__(self) -> int:
     return self.id.int
 
   def __str__(self):
@@ -64,15 +64,13 @@ class Project(object):
   def add(self):
     Project._db('hsetnx', 'projects', self.name.casefold().strip(), str(self.id))
     Project._db('hsetnx', 'projects', str(self.id), self.name.strip())
-
-  def log(self, state:str, at:datetime=now()):
-    _ts = str(at.timestamp()).replace('.', '')[:13]
-    Project._db('hsetnx', 'projects', str(self.id), self.name)
-    Project._db('hsetnx', 'projects', self.name.casefold(), str(self.id))
-    Project._db('xadd', 'logs', dict(project=str(self.id), state=state), id=f'{_ts:0<13}-*')
     Project._db('save')
 
-  def stop(self, at:datetime=now()):
+  def log(self, state:str, at:datetime=now()) -> None:
+    self.add()
+    LogProject.add(self, at)
+
+  def stop(self, at:datetime=now()) -> None:
     if self.is_running():
       self.log('stopped', at)
 
@@ -92,7 +90,7 @@ class Project(object):
     Project._db('hset', 'projects', new.name.casefold(), str(self.id))
     Project._db('save')
 
-  def remove(self):
+  def remove(self) -> None:
     for log_project in LogProject.find(matching=self):
       log_project.remove()
 
@@ -101,7 +99,7 @@ class Project(object):
     Project._db('save')
 
   @classmethod
-  def _db(kind, cmd, key='', *args, **kw):
+  def _db(kind, cmd, key='', *args, **kw) -> Any:
     with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
       if int(conn.info('default').get('redis_version', '0')[0]) < 7:
         raise Exception('This software requires version 7+ of Redis.')
@@ -118,7 +116,7 @@ class Project(object):
         return None
 
   @classmethod
-  def make(kind, nameorid:Union[None, str, UUID], when:datetime=now()):
+  def make(kind, nameorid:Union[None, str, UUID], when:datetime=now()) -> Union['Project', 'LogProject', 'FauxProject']:
     if nameorid is None:
       debug(f"Project {nameorid!r} was empty.")
       return FauxProject()
@@ -208,7 +206,7 @@ class Project(object):
   def all(kind) -> list:
     return [Project.make(UUID(pid)) for pid, project in sorted(Project._db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
 
-def print_format(fmt):
+def print_format(fmt) -> None:
   def _print(rep, when, largest_scale, include_all):
     if fmt == 'simple':
       print(project.simple_format(rep, when, largest_scale, include_all))
@@ -249,7 +247,7 @@ class LogProject(Project):
   def __str__(self):
     return f'<LogProject hash:{hash(self): >20} id: {str(self.id)!r} state: {self.state!r} timestamp_id: {self.timestamp_id: >16} serial: {self.serial: >3} when: "{self.when:%a %F %T}" name: {Project._db("hget", "projects", str(self.id))!r}>'
 
-  def __hash__(self):
+  def __hash__(self) -> int:
     return int(self.timestamp_id.replace('-', ''))
 
   def log_format(self, with_timestamp=False):
@@ -258,8 +256,17 @@ class LogProject(Project):
     else:
       return super().log_format()
 
-  def remove(self):
+  def add(self, at:datetime) -> None:
+    LogProject.add(self, at)
+
+  def remove(self) -> None:
     Project._db('xdel', 'logs', self.timestamp_id)
+
+  @classmethod
+  def add(kind, project:Project, at:datetime) -> None:
+    _ts = str(at.timestamp()).replace('.', '')[:13]
+    Project._db('xadd', 'logs', dict(project=str(project.id), state=project.state), id=f'{_ts:0<13}-*')
+    Project._db('save')
 
   @classmethod
   def find(kind, matching:Union[str, None]=None, since:Union[datetime, None]=None, count:Union[int, None]=None, _version:Union[str, UUID, None]=None) -> list:
