@@ -1,17 +1,18 @@
 from . import *
-from tkinter import ttk
+from .project import Project
+from tkinter import ttk, Tk, StringVar, N, S, E, W
 
 def gui_action(event, cb:ttk.Combobox) -> None:
   button_state = event.widget.cget('text')
   if 'Start' in button_state:
-    project = project.Project.make(cb.get())
+    project = Project.make(cb.get())
     project.start()
 
-    _projects = [project.name for project in project.Project.all()]
+    _projects = [project.name for project in Project.all()]
     cb['values'] = _projects
     cb['width']  = len(max(_projects, key=len))-10
   elif button_state == 'Stop':
-    project = project.Project.make('last')
+    project = Project.make('last')
     project.stop()
   else:
     debug(f"Unknown state {state!r}")
@@ -25,10 +26,10 @@ def gui() -> None:
   pfrm = ttk.LabelFrame(root, text='Project', underline=0, padding=11)
   pfrm.grid(sticky=(N, S, E, W))
 
-  _projects = [project.name for project in project.Project.all()]
+  _projects = [project.name for project in Project.all()]
   c = ttk.Combobox(pfrm, values=_projects, textvariable=proj, width=len(max(_projects, key=len))-10)
 
-  if (project := project.Project.make('last')).is_running():
+  if (project := Project.make('last')).is_running():
     c.set(project.name)
   c.grid(row=0, column=0, pady=7, columnspan=4, sticky=(E, W))
 
