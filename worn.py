@@ -8,10 +8,10 @@ from lib.gui import gui
 
 def main() -> None:
   p = parse_args()
-  if p.no_color
-    from lib.colors import colors
-  else:
+  if p.no_color:
     from lib.nocolors import colors
+  else:
+    from lib.colors import colors
 
   if p.action == 'show_id':
 
