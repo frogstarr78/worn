@@ -135,6 +135,7 @@ def parse_args() -> argparse.Namespace:
   p = argparse.ArgumentParser(description=f'{colors.underline}W{colors.reset}orking {colors.underline}o{colors.reset}n {colors.underline}R{colors.reset}ight {colors.underline}N{colors.reset}ow', formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
 
   sub = p.add_subparsers(help='Various sub-commands')
+  p.add_argument('-C', '--no_color', action='store_true', default=False, help="Don't include color in the output.")
   ui = sub.add_parser('gui', help='Show the gui', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   ui.set_defaults(action='gui')
 
@@ -195,7 +196,6 @@ def parse_args() -> argparse.Namespace:
   rep.add_argument('-f', '--format',        type=str,       choices='simple,csv,time'.split(','),                              default='simple',                       help='Output the report in this format.')
   rep.add_argument('-c', '--comment',       type=str,        nargs='+',                                                        default='Time spent on {project.name}', help='Comment to make in tickets when reporting to a ticket.')
   rep.add_argument('-N', '--no_header',     action='store_true',                                                               default=False,                          help="Don't display the header in the output.")
-  rep.add_argument('-C', '--no_color',      action='store_false',                                                              default=True,                           help="Don't include color in the output.")
   prep = rep.add_mutually_exclusive_group(required=False)
   prep.add_argument('-p', '--project',                       nargs='+',                      metavar='NAME|UUID',                                                      help='Project name or uuid.')
   prep.add_argument('-a', '--include_all',                   action='store_true',                                              default=False,                          help='Display ALL projects including those without any tracked time.')
