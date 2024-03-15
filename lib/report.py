@@ -11,10 +11,18 @@ class Report(object):
     self.show_header = show_header
 
   def mail(self, args:argparse.Namespace) -> None:
-    pass
+    with smtplib.SMTP('localhost') as mc:
+      mc.set_debuglevel(1)
+      mc.sendmail('scott@viviotech.net', args.mailto, f'{self:{args.format}}')
 
-  def post(self, args:argparse.Namespace) -> None:
-    pass
+  def post(self, ticket:Union[str, int], comment:str) -> None:
+    import requests
+
+    for project, time in self.data.items():
+      Project.cache(ticket, project.id)
+      _comment = comment.format(project=project)
+      debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={ticket}&time_spent={float(time)/MINUTE}&body="{_comment}"')
+      requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=ticket, time_spent=float(time)/MINUTE, body=_comment))
 
   def print(self, fmt):
     print(f'{self:{fmt}}')
@@ -22,25 +30,25 @@ class Report(object):
   def __how_long(self, ts:int) -> int:
     if self.scale == 'w':
       return (
-        int(ts/(3600*24*7)),
-        int(ts/(3600*24)),
-        int(ts%(3600*24)/3600),
-        int(ts%3600/60),
-        int(ts%60)
+        int(ts/WEEK),
+        int(ts/DAY),
+        int(ts%DAY/HOUR),
+        int(ts%HOUR/MINUTE),
+        int(ts%MINUTE)
       )
     elif self.scale == 'd':
       return (
-        int(ts/(3600*24)),
-        int(ts%(3600*24)/3600),
-        int(ts%3600/60),
-        int(ts%60)
+        int(ts/DAY),
+        int(ts%DAY/HOUR),
+        int(ts%HOUR/MINUTE),
+        int(ts%MINUTE)
       )
 
     elif self.scale == 'h':
-      return ( int(ts/3600), int(ts%3600/60), int(ts%60) )
+      return ( int(ts/HOUR), int(ts%HOUR/MINUTE), int(ts%MINUTE) )
 
     elif self.scale == 'm':
-      return ( int(ts/60), int(ts%60))
+      return ( int(ts/MINUTE), int(ts%MINUTE))
 
   def __simple_format(self) -> str:
     if self.show_header:
@@ -141,5 +149,5 @@ class Report(object):
       return self.__simple_format()
     elif 'time' in fmt_spec:
       return self.__time_format()
-
-    raise ValueError('Unknown specifier for Project.')
+    else:
+      return super().__format__(fmt_spec)

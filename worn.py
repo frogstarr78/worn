@@ -38,7 +38,7 @@ def main() -> None:
       else:
         sys.exit(2)
     else:
-      _prompt = '''Multiple projects found. Please choose the number of the matching project that you want to start? 
+      _prompt = '''Multiple projects found. Please choose the number of the matching project that you want to start?
 0: quit/cancel
 '''
       n = 1
@@ -86,7 +86,7 @@ def main() -> None:
     data = LogProject.report(p.project, when)
     report = Report(data, when, p.largest_scale, p.include_all, not p.no_header)
     if p.ticket:
-      report.post(p)
+      report.post(p.ticket, p.comment)
     elif p.mailto:
       report.mail(p)
     else:

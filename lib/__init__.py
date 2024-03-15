@@ -57,38 +57,66 @@ def parse_timestamp(tsin):
 def _datetime(dtin:str) -> datetime:
   weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
   abbrev_weekdays = [day[:3] for day in weekdays]
+  if not isinstance(dtin, (datetime, str)):
+    raise Exception(f'Input value {dtin!r} is unknown type {type(dtin)}.')
+
+  if isinstance(dtin, datetime):
+    return dtin
+
+  dtin = dtin.strip().casefold()
   if dtin.isdigit():
+    '''"parse" a timestamp'''
     return parse_timestamp(dtin)
-  elif dtin.casefold() == 'now':
+  elif dtin == 'now':
+    '''"parse" a "now"'''
     return now()
-  elif dtin.casefold() == 'today':
+  elif dtin == 'today':
+    '''"parse" a "today"'''
     return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S')
-  elif dtin.casefold() == 'yesterday':
+  elif dtin == 'yesterday':
+    '''"parse" a "yesterday"'''
     return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=1)
-  elif dtin.casefold() in weekdays:
+  elif dtin.endswith('days ago'):
+    '''"parse" a "yesterday"'''
+    num_days = int(dtin.split(' ')[0])
+    return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=num_days)
+  elif dtin in weekdays:
+    '''"parse" a weekday'''
     current_dow = now().weekday()
     if current_dow <= weekdays.index(dtin.casefold()):
       return now() - timedelta(days=7 - (weekdays.index(dtin.casefold()) - current_dow))
     else:
       return now() - timedelta(days=current_dow - weekdays.index(dtin.casefold()))
-  elif dtin.casefold() in abbrev_weekdays:
+  elif dtin in abbrev_weekdays:
+    '''"parse" a weekday abbreviation'''
     current_dow = now().weekday()
     if current_dow <= abbrev_weekdays.index(dtin.casefold()):
       return now() - timedelta(days=7 - (abbrev_weekdays.index(dtin.casefold()) - current_dow))
     else:
       return now() - timedelta(days=current_dow - abbrev_weekdays.index(dtin.casefold()))
-  elif ':' in dtin and len(hrs_mins := dtin.split(':')) == 2 and all(map(str.isdigit, hrs_mins)) and 0 <= int(hrs_mins[0]) < 24 and 0 <= int(hrs_mins[1]) < 60:
-    return datetime.strptime(f'{now():%F} {hrs_mins[0]}:{hrs_mins[1]}', '%Y-%m-%d %H:%M')
-  elif ':' in dtin and len(hrs_mins_secs := dtin.split(':')) == 3 and all(map(str.isdigit, hrs_mins_secs)) and 0 <= int(hrs_mins[0]) < 24 and 0 <= int(hrs_mins[1]) < 60 and 0 <= int(hrs_mins[2]) < 60:
-    return datetime.strptime(f'{now():%F} {hrs_mins_secs[0]}:{hrs_mins_secs[1]}:{hrs_mins_secs[2]}', '%Y-%m-%d %H:%M:%S')
+  elif dtin.count(' ') > 0:
+    '''parse a datetime'''
+    if dtin.count(' ') > 2 or dtin.count(':') not in (1, 2):
+      raise Exception(f'Unknown datetime format for input value {dtin!r}.')
+
+    if dtin.endswith('am') or dtin.endswith('pm'):
+      return datetime.strptime(dtin, '%Y-%m-%d %I:%M:%S %p')
+    elif dtin.count(':') == 1:
+      return datetime.strptime(dtin, '%Y-%m-%d %H:%M')
+    elif dtin.count(':') == 2:
+      return datetime.strptime(dtin, '%Y-%m-%d %H:%M:%S')
+  elif (num_sep := dtin.count(':')) > 0:
+    '''parse a time'''
+    if num_sep > 2:
+      raise Exception(f'Unknown datetime format for input value {dtin!r}.')
+
+    if num_sep == 1:
+      return datetime.strptime(f'{now():%F} {dtin}', '%Y-%m-%d %H:%M')
+    elif num_sep == 2:
+      return datetime.strptime(f'{now():%F} {dtin}', '%Y-%m-%d %H:%M:%S')
   else:
-    if ' ' in dtin:
-      if dtin.casefold().endswith('am') or dtin.casefold().endswith('pm'):
-        return datetime.strptime(dtin, '%Y-%m-%d %I:%M:%S %p')
-      else:
-        return datetime.strptime(dtin, '%Y-%m-%d %H:%M:%S')
-    else:
-      return datetime.strptime(dtin, '%Y-%m-%d')
+    '''parse a date'''
+    return datetime.strptime(dtin, '%Y-%m-%d')
 
 def email(s):
   if '@' not in s:
@@ -191,6 +219,11 @@ def parse_args() -> argparse.Namespace:
     p.print_help()
     sys.exit(0)
   return r
+
+MINUTE = 60
+HOUR   = MINUTE*60
+DAY    = HOUR*24
+WEEK   = DAY*7
 
 from . import project
 from . import colors

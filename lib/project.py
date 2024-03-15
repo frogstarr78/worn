@@ -75,8 +75,13 @@ class Project(object):
       self.log('stopped', at)
 
   def start(self, at:datetime=now()) -> None:
-    Project._db('setnx', 'begun', str(now().timestamp()))
-    Project._db('expire', 'begun', 3600, 'NX')
+    if Project._db('exists', 'logs'):
+      oldest_log = parse_timestamp(Project._db('xinfo_stream', 'logs').get('last-generated-id', now()))
+      if at < oldest_log:
+        raise Exception(f'The start time that you specified "{at:%F %T}" is older than the last log entered. Please, choose a different time or adjust the previously entered log entry time "{oldest_log:%F %T}".')
+
+    Project._db('set', 'begun', str(now().timestamp()), nx=True)
+    Project._db('expire', 'begun', 3600, nx=True)
 
     Project.make('last').stop(at=at)
     self.log('started', at)
@@ -206,26 +211,11 @@ class Project(object):
   def all(kind) -> list:
     return [Project.make(UUID(pid)) for pid, project in sorted(Project._db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
 
-def print_format(fmt) -> None:
-  def _print(rep, when, largest_scale, include_all):
-    if fmt == 'simple':
-      print(project.simple_format(rep, when, largest_scale, include_all))
-    elif fmt == 'csv':
-      print(project.csv_format(rep, when, largest_scale, include_all))
-
-  return _print
-
-def post_report(report:dict[str, float], args:argparse.Namespace) -> None:
-  import requests
-
-  for project, time in report.items():
-    _comment = args.comment.format(project=project)
-    debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={args.ticket}&time_spent={float(time)/60}&body="{_comment}"')
-    requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=args.ticket, time_spent=float(time)/60, body=_comment))
-
-  with smtplib.SMTP('localhost') as mc:
-    mc.set_debuglevel(1)
-    mc.sendmail('scott@viviotech.net', p.mailto, msg)
+  @classmethod
+  def cache(kind, ticket:Union[str, int], id:str) -> None:
+    _key = f'tickets:{str(id)}'
+    Project._db('set', key, str(ticket), nx=True)
+    Project._db('expire', key, (WEEK+HOUR*12)-(DAY*now().weekday()+1), nx=True)
 
 class FauxProject(Project):
   def __init__(self):
@@ -243,12 +233,12 @@ class LogProject(Project):
     else:
       self.serial = 0
 
-
   def __str__(self):
     return f'<LogProject hash:{hash(self): >20} id: {str(self.id)!r} state: {self.state!r} timestamp_id: {self.timestamp_id: >16} serial: {self.serial: >3} when: "{self.when:%a %F %T}" name: {Project._db("hget", "projects", str(self.id))!r}>'
 
   def __hash__(self) -> int:
-    return int(self.timestamp_id.replace('-', ''))
+#    return int(self.timestamp_id.replace('-', ''))
+    return int(self.id)
 
   def log_format(self, with_timestamp=False):
     if with_timestamp:
@@ -293,7 +283,7 @@ class LogProject(Project):
   def report(kind, matching=None, since:Union[datetime, None]=None) -> dict[Project, float]:
     stats = {}
     accum = 0
-    for log in LogProject.all(matching, since):
+    for log in LogProject.find(matching, since):
       stats.setdefault(log, 0)
       if log.is_running():
         accum = log.when.timestamp()
