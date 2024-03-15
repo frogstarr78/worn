@@ -67,6 +67,10 @@ class Project(object):
     Project._db('save')
 
   def log(self, state:str, at:datetime=now()) -> None:
+    if at > now() + timedelta(seconds=10):
+      future_time = input(f'The time that you specified "{at:%F %T}" is in the future. Are you certain you want to {state.rstrip("ed")} the {self:name} project in the future (y|N)? ')
+      if not future_time.strip().casefold().startswith('y'):
+        return
     self.add()
     LogProject.add(self, state, at)
 

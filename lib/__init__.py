@@ -64,7 +64,7 @@ def _datetime(dtin:str) -> datetime:
     return dtin
 
   dtin = dtin.strip().casefold()
-  if dtin.isdigit():
+  if dtin.isdigit() or istimestamp_id(dtin):
     '''"parse" a timestamp'''
     return parse_timestamp(dtin)
   elif dtin == 'now':
@@ -131,31 +131,33 @@ def email(s):
   return str(s)
 
 def parse_args() -> argparse.Namespace:
-  p = argparse.ArgumentParser(description='Working on Right Now', formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
+  from .colors import colors
+  p = argparse.ArgumentParser(description=f'{colors.underline}W{colors.reset}orking {colors.underline}o{colors.reset}n {colors.underline}R{colors.reset}ight {colors.underline}N{colors.reset}ow', formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
+
   sub = p.add_subparsers(help='Various sub-commands')
-  ui = sub.add_parser('gui', help='Show the gui')
+  ui = sub.add_parser('gui', help='Show the gui', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   ui.set_defaults(action='gui')
 
-  beg = sub.add_parser('start', help='Start a project')
+  beg = sub.add_parser('start', help='Start a project', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   beg.add_argument('-a', '--at', type=_datetime, default=now(), metavar='DATETIME',  help='...the project at this specific time')
   beg.add_argument('project',    nargs='+',     metavar='NAME|UUID',                 help='Project name or uuid.')
   beg.set_defaults(action='start')
 
-  end = sub.add_parser('stop', help='Stop a project')
+  end = sub.add_parser('stop', help='Stop a project', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   end.add_argument('-a', '--at',      type=_datetime, metavar='DATETIME',  default=now(),  help='...the project at this specific time')
   end.add_argument('-p', '--project', nargs='+',      metavar='NAME|UUID', default='last', help='Project name or uuid (or the last project if none provided).')
   end.set_defaults(action='stop')
 
-  ren = sub.add_parser('rename', help='Rename a project')
+  ren = sub.add_parser('rename', help='Rename a project', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   ren.add_argument('project',    nargs='+', metavar='NAME|UUID',                help='Old project name or uuid.')
   ren.add_argument('-t', '--to', nargs='+', metavar='NAME',      required=True, help='New project name.')
   ren.set_defaults(action='rename')
 
-  rm = sub.add_parser('rm', help='Remove a project')
+  rm = sub.add_parser('rm', help='Remove a project', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   rm.add_argument('project', nargs='+', metavar='NAME|UUID', help='Project name or uuid.')
   rm.set_defaults(action='rm')
 
-  edit = sub.add_parser('edit', help='Change the recorded time of a log entry.')
+  edit = sub.add_parser('edit', help='Change the recorded time of a log entry.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   edit.add_argument('at', type=_datetime, metavar='TIMESTAMP_ID|DATETIME',         help='The original log entry time to change.')
   edit.add_argument('-s', '--state',  type=str, choices=('started', 'stopped'),    help='Change the log entry to this state.')
   edit.add_argument('-p', '--project', type=str,                                   help='Change the log entry to this project.')
@@ -163,33 +165,36 @@ def parse_args() -> argparse.Namespace:
   edit.add_argument('-r', '--reason', type=str, nargs='+', metavar='REASON',       help='Reason for the change in time.')
   edit.set_defaults(action='edit')
 
-  pstat = sub.add_parser('stat', help='Show the last status.')
+  pstat = sub.add_parser('stat', help='Show the last status.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   pstat.set_defaults(action='show_last')
 
-  show = sub.add_parser('show', help='Show some aspect of the system')
+  show = sub.add_parser('show', help='Show some aspect of the system', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   showsub = show.add_subparsers()
 
-  shl = showsub.add_parser('last', help='Show the last status.')
-  shl.set_defaults(action='show_last')
+  shas = showsub.add_parser('last', help='Show the last status.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  shas.set_defaults(action='show_last')
 
-  shp = showsub.add_parser('projects', help='Show the available projects.')
-  shp.set_defaults(action='show_projects')
+  shor = showsub.add_parser('projects', help='Show the available projects.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  shor.set_defaults(action='show_projects')
 
-  sho = showsub.add_parser('logs',     help='Show the project logs.')
-  sho.add_argument('-p', '--project',                       nargs='+', metavar='NAME|UUID', default=None, help='Project name or uuid.')
-  sho.add_argument('-s', '--since',         type=_datetime,            metavar='DATETIME',  default=None, help='Report details since this datetime.')
-  sho.add_argument('-t', '--timestamp',     action='store_true',                            default=False, help='Show the timestamp also (default: False).')
-  sho.set_defaults(action='show_logs')
+  shol = showsub.add_parser('logs',     help='Show the project logs.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  shol.add_argument('-p', '--project',                       nargs='+', metavar='NAME|UUID', default=None, help='Project name or uuid.')
+  shol.add_argument('-s', '--since',         type=_datetime,            metavar='DATETIME',  default=None, help='Report details since this datetime.')
+  shol.add_argument('-t', '--timestamp',     action='store_true',                            default=False, help='Show the timestamp also.')
+  shol.set_defaults(action='show_logs')
 
-  shi = showsub.add_parser('id',       help='Show the project name from the provided id.')
-  shi.add_argument('project', type=UUID, metavar='UUID')
-  shi.set_defaults(action='show_id')
+  shid = showsub.add_parser('id', help='Show the project name from the provided id.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  shid.add_argument('project', type=UUID, metavar='UUID')
+  shid.set_defaults(action='show_id')
 
-  rep = sub.add_parser('report', help='Report the results of work done')
-  rep.add_argument('-l', '--largest_scale', type=str,       choices='w,d,h,m,s'.split(','),                                    default='h',                            help='The largest component of time to display (default: "h"): w => Weeks; d => Days; h => Hours; m => Minutes; s => Seconds.')
-  rep.add_argument('-f', '--format',        type=str,       choices='simple,csv,time'.split(','),                              default='simple',                       help='Output the report in this format (default: simple).')
-  rep.add_argument('-c', '--comment',       type=str,        nargs='+',                                                        default='Time spent on {project.name}', help='Comment to make in tickets when reporting to a ticket (default: "Time spent on {project.name}").')
-  rep.add_argument('-N', '--no_header',     action='store_true',                                                               default=False,                          help="Don't display the header in the output (default: False).")
+  shod = showsub.add_parser('dates', help='Display and explain the avilable date formats that can be used by the program.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  shod.set_defaults(action='explain_dates')
+
+  rep = sub.add_parser('report', help='Report the results of work done', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  rep.add_argument('-l', '--largest_scale', type=str,       choices='w,d,h,m,s'.split(','),                                    default='h',                            help='The largest component of time to display: w => Weeks; d => Days; h => Hours; m => Minutes; s => Seconds.')
+  rep.add_argument('-f', '--format',        type=str,       choices='simple,csv,time'.split(','),                              default='simple',                       help='Output the report in this format.')
+  rep.add_argument('-c', '--comment',       type=str,        nargs='+',                                                        default='Time spent on {project.name}', help='Comment to make in tickets when reporting to a ticket.')
+  rep.add_argument('-N', '--no_header',     action='store_true',                                                               default=False,                          help="Don't display the header in the output.")
   rep.add_argument('-C', '--no_color',      action='store_false',                                                              default=True,                           help="Don't include color in the output.")
   prep = rep.add_mutually_exclusive_group(required=False)
   prep.add_argument('-p', '--project',                       nargs='+',                      metavar='NAME|UUID',                                                      help='Project name or uuid.')
@@ -206,6 +211,7 @@ def parse_args() -> argparse.Namespace:
   hlp.set_defaults(action='help')
 
   p.set_defaults(project=[], action='help')
+  # forces any unknown option to display the help
 
   r = p.parse_args()
   if r.project is not None and isinstance(r.project, list) and len(r.project) > 0:
@@ -226,5 +232,4 @@ DAY    = HOUR*24
 WEEK   = DAY*7
 
 from . import project
-from . import colors
 from . import gui

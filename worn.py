@@ -10,22 +10,70 @@ from lib.gui import gui
 def main() -> None:
   p = parse_args()
   if p.action == 'show_id':
+
     print(Project.make(p.project))
   elif p.action == 'show_last':
 
     last = Project.make('last')
     print('Last project: {last.name!r}; state: {colour}{last.state!r}{rst}; at: {last.when}, id: {last.id}.'.format(last=last, colour=last.is_running() and colors.fg.green or colors.fg.orange, rst=colors.reset))
   elif p.action == 'show_projects':
+
     for project in Project.all():
       fmt = f'{project.id}: {project.name}'
       if project.is_last() and Project.make('last').is_running():
         fmt += f' ({colors.underline}{colors.bg.blue}currently running{colors.reset})'
       print(fmt)
   elif p.action == 'show_logs':
+
     for log in LogProject.find(p.project, p.since):
       print(log.log_format(p.timestamp))
 
+  elif p.action == 'explain_dates':
+    msg = '''The system should know how to parse these custom pseudo-values and formats.
+
+In all these instances, case is ignored.
+Pseudo-values "understood" by the system.
+
+"now"                 This means right now, to include microseconds. It utilizes datetime.datetime.now(). The default value in most cases.
+"today"               Similar to now, however, it starts at Midnight local time.
+"yesterday"           Same as today, except yeterday
+
+weekdays              These are understood as the last occurance of the named weekday. So if today is Tuesday and you enter Wednesday, it will be interpreted as the previous Wednesday, approximately a week ago.
+                      If you enter Monday, though, it will be understood as meaning yesterday (although at current time, not midnight like "today" and "yesterday" are).
+                      examples: monday, Tuesday, Sunday, etc
+
+abbreviated weekdays: same as weekdays
+                      examples: Thur, fri, etc
+
+x days ago:           Understood as midnight x days ago.  If today is Friday, then this means midnight on Monday of this week.
+                      examples: "5 days ago".
+
+
+Formats "understood" by the system"
+uniz timestamp:              Standard unix time stamps, which may or may not include microseconds (which is necessary for the software to understand redis stream timestamp ids).
+                             examples: 17095835400, 17102610000, 1710262561568, 1710478747033
+
+redis stream timestamps:     See https://redis.io/docs/data-types/streams/#entry-ids
+                             examples: 17095835400-0, 17102610000-2, 1710262561568-0, 1710478747033-0
+
+See https://docs.python.org/3/library/datetime.html#datetime.datetime.strptime
+
+%Y-%m-%d %I:%M:%S %p         Datetime value with trailing am/pm
+                             examples: "2024-03-14 11:54:02 pm"
+
+%Y-%m-%d %H:%M:%S            Datetime value with 24-hour clock
+                             examples: "2024-03-14 23:54:02"
+
+%H:%M                        Time value. These are interpreted as today at the time specified, which means, if you're not careful, you could unintentionally enter a time in the future.
+%H:%M:%S                     examples: "10:31", "22:22", etc
+
+%Y-%m-%d                     Date value
+                             examples: "2024-03-14"
+
+'''
+    print(msg)
   elif p.action in ['start', 'stop']:
+
     projects = Project.nearest_project_by_name(p.project)
     if len(projects) == 1:
       f = getattr(projects.pop(), p.action)
@@ -70,12 +118,16 @@ def main() -> None:
       f = getattr(list(projects)[num-1], p.action)
     f(p.at)
   elif p.action == 'rename':
+
     Project.make(p.project).rename(Project(' '.join(p.to).strip().replace('\n', ' ')))
   elif p.action == 'rm':
+
     Project.make(p.project).remove()
   elif p.action == 'gui':
+
     gui()
   elif p.action == 'report':
+
     if p.since:
       when = p.since
     elif p.between:
@@ -108,9 +160,9 @@ def main() -> None:
 
       LogProject.edit_log_time(p.at, p.to, ' '.join(p.reason))
     elif p.state:
-      pass
+      raise Exception("Implement me!")
     elif p.project:
-      pass
+      raise Exception("Implement me!")
 
 if __name__ == '__main__':
   main()
