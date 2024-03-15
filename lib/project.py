@@ -1,6 +1,22 @@
 from . import *
 from .colors import colors
 
+def _db(cmd, key='', *args, **kw) -> Any:
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+    if int(conn.info('default').get('redis_version', '0')[0]) < 7:
+      raise Exception('This software requires version 7+ of Redis.')
+
+    if cmd.casefold() == 'shutdown':
+      return None
+
+    if hasattr(conn, cmd.casefold()) and callable(f := getattr(conn, cmd.casefold())):
+      if cmd in ['save', 'bgsave', 'ping']:
+        return f()
+      else:
+        return f(key, *args, **kw)
+    else:
+      return None
+
 class Project(object):
   def __init__(self, id:UUID, name:str, state:str='stopped', when:datetime=now()):
     if isuuid(id) and isuuid(name):
@@ -34,7 +50,7 @@ class Project(object):
     return self.id.int
 
   def __str__(self):
-    return f'<Project hash:{hash(self)} id: {self.id!r} name: {Project._db("hget", "projects", str(self.id))!r} state: {self.state!r} when: {self.when.strftime("%a %F %T")!r}>'
+    return f'<Project hash:{hash(self)} id: {self.id!r} name: {_db("hget", "projects", str(self.id))!r} state: {self.state!r} when: {self.when.strftime("%a %F %T")!r}>'
 
   def __format__(self, fmt_spec: Any) -> str:
     if 'id' in fmt_spec:
@@ -62,9 +78,9 @@ class Project(object):
     return self == Project.make('last')
 
   def add(self):
-    Project._db('hsetnx', 'projects', self.name.casefold().strip(), str(self.id))
-    Project._db('hsetnx', 'projects', str(self.id), self.name.strip())
-    Project._db('save')
+    _db('hsetnx', 'projects', self.name.casefold().strip(), str(self.id))
+    _db('hsetnx', 'projects', str(self.id), self.name.strip())
+    _db('save')
 
   def log(self, state:str, at:datetime=now()) -> None:
     if at > now() + timedelta(seconds=10):
@@ -79,13 +95,13 @@ class Project(object):
       self.log('stopped', at)
 
   def start(self, at:datetime=now()) -> None:
-    if Project._db('exists', 'logs'):
-      oldest_log = parse_timestamp(Project._db('xinfo_stream', 'logs').get('last-generated-id', now()))
+    if _db('exists', 'logs'):
+      oldest_log = parse_timestamp(_db('xinfo_stream', 'logs').get('last-generated-id', now()))
       if at < oldest_log:
         raise Exception(f'The start time that you specified "{at:%F %T}" is older than the last log entered. Please, choose a different time or adjust the previously entered log entry time "{oldest_log:%F %T}".')
 
-    Project._db('set', 'begun', str(now().timestamp()), nx=True)
-    Project._db('expire', 'begun', 3600, nx=True)
+    _db('set', 'begun', str(now().timestamp()), nx=True)
+    _db('expire', 'begun', 3600, nx=True)
 
     Project.make('last').stop(at=at)
     self.log('started', at)
@@ -94,35 +110,19 @@ class Project(object):
     if not isinstance(new, Project):
       raise Exception(f"Project {new!r} is the wrong type {type(new)!r}.")
 
-    Project._db('hset', 'projects', str(self.id), new.name)
-    Project._db('hdel', 'projects', self.name.casefold())
-    Project._db('hset', 'projects', new.name.casefold(), str(self.id))
-    Project._db('save')
+    _db('hset', 'projects', str(self.id), new.name)
+    _db('hdel', 'projects', self.name.casefold())
+    _db('hset', 'projects', new.name.casefold(), str(self.id))
+    _db('save')
 
   def remove(self) -> None:
     for log_project in LogProject.find(matching=self):
       log_project.remove()
 
-    Project._db('hdel', 'projects', self.name)
-    Project._db('hdel', 'projects', str(self.id))
-    Project._db('save')
+    _db('hdel', 'projects', self.name)
+    _db('hdel', 'projects', str(self.id))
+    _db('save')
 
-  @classmethod
-  def _db(kind, cmd, key='', *args, **kw) -> Any:
-    with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-      if int(conn.info('default').get('redis_version', '0')[0]) < 7:
-        raise Exception('This software requires version 7+ of Redis.')
-
-      if cmd.casefold() == 'shutdown':
-        return None
-
-      if hasattr(conn, cmd.casefold()) and callable(f := getattr(conn, cmd.casefold())):
-        if cmd in ['save', 'bgsave', 'ping']:
-          return f()
-        else:
-          return f(key, *args, **kw)
-      else:
-        return None
 
   @classmethod
   def make(kind, nameorid:Union[None, str, UUID], when:datetime=now()) -> Union['Project', 'LogProject', 'FauxProject']:
@@ -137,38 +137,38 @@ class Project(object):
     if isinstance(nameorid, Project):
       return nameorid
     elif isinstance(nameorid, UUID):
-      if Project._db('exists', 'projects') and Project._db('hexists', 'projects', str(nameorid)):
-        return Project(nameorid, Project._db('hget', 'projects', str(nameorid)))
+      if _db('exists', 'projects') and _db('hexists', 'projects', str(nameorid)):
+        return Project(nameorid, _db('hget', 'projects', str(nameorid)))
       else:
         raise Exception(f'Name or id {nameorid!r} is not found in the list of available projects.')
 
     elif isinstance(nameorid, str):
       if nameorid.casefold().strip() == 'last':
-        records = Project._db('xrevrange', 'logs', '+', '-', count=1)
+        records = _db('xrevrange', 'logs', '+', '-', count=1)
         if len(records) == 0:
           return FauxProject()
         else:
           tsid, last = records[0]
           _id = UUID(last.get('project'))
-          return Project(_id, Project._db('hget', 'projects', str(_id)), last.get('state', 'stopped'), parse_timestamp(tsid))
-      elif isuuid(nameorid) and Project._db('exists', 'projects') and Project._db('hexists', 'projects', nameorid):
-        return Project(UUID(nameorid), Project._db('hget', 'projects', nameorid))
+          return Project(_id, _db('hget', 'projects', str(_id)), last.get('state', 'stopped'), parse_timestamp(tsid))
+      elif isuuid(nameorid) and _db('exists', 'projects') and _db('hexists', 'projects', nameorid):
+        return Project(UUID(nameorid), _db('hget', 'projects', nameorid))
       elif istimestamp_id(nameorid):
-        record = LogProject._db('xrange', 'logs', nameorid, '+', count=1)
+        record = _db('xrange', 'logs', nameorid, '+', count=1)
         if len(record) > 0:
           return Project.make(record[0][1], record[0][0])
         else:
           raise Exception(f'No log entry found with id {nameorid}.')
-      elif Project._db('exists', 'projects') and Project._db('hexists', 'projects', nameorid.casefold().strip()):
-        _id = UUID(Project._db('hget', 'projects', nameorid.casefold().strip()))
-        return Project(_id, Project._db('hget', 'projects', str(_id)))
+      elif _db('exists', 'projects') and _db('hexists', 'projects', nameorid.casefold().strip()):
+        _id = UUID(_db('hget', 'projects', nameorid.casefold().strip()))
+        return Project(_id, _db('hget', 'projects', str(_id)))
       else:
         project = Project(uuid4(), nameorid)
         project.add()
         return project
     elif isinstance(nameorid, dict):
       _id = UUID(nameorid.get('project'))
-      return LogProject(_id, Project._db('hget', 'projects', str(_id)), nameorid.get('state'), when)
+      return LogProject(_id, _db('hget', 'projects', str(_id)), nameorid.get('state'), when)
     else:
       msg = f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.'
       debug(msg)
@@ -181,14 +181,14 @@ class Project(object):
     if name == 'last':
       matches.add(Project.make('last'))
       counts = [1, 1]
-    elif Project._db('exists', 'projects') and Project._db('hexists', 'projects', name):
+    elif _db('exists', 'projects') and _db('hexists', 'projects', name):
       matches.add(Project.make(name))
       counts = [1, 1]
-    elif Project._db('exists', 'projects') and Project._db('hexists', 'projects', name.strip().casefold()):
+    elif _db('exists', 'projects') and _db('hexists', 'projects', name.strip().casefold()):
       matches.add(Project.make(name.strip().casefold()))
       counts = [1, 1]
     else:
-      for label in Project._db('hkeys', 'projects'):
+      for label in _db('hkeys', 'projects'):
         counts[0] += 1
         if len(label) < len(name):
           continue
@@ -213,13 +213,13 @@ class Project(object):
 
   @classmethod
   def all(kind) -> list:
-    return [Project.make(UUID(pid)) for pid, project in sorted(Project._db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
+    return [Project.make(UUID(pid)) for pid, project in sorted(_db('hgetall', 'projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
 
   @classmethod
   def cache(kind, ticket:Union[str, int], id:str) -> None:
     _key = f'tickets:{str(id)}'
-    Project._db('set', key, str(ticket), nx=True)
-    Project._db('expire', key, (WEEK+HOUR*12)-(DAY*now().weekday()+1), nx=True)
+    _db('set', key, str(ticket), nx=True)
+    _db('expire', key, (WEEK+HOUR*12)-(DAY*now().weekday()+1), nx=True)
 
 class FauxProject(Project):
   def __init__(self):
@@ -238,7 +238,7 @@ class LogProject(Project):
       self.serial = 0
 
   def __str__(self):
-    return f'<LogProject hash:{hash(self): >20} id: {str(self.id)!r} state: {self.state!r} timestamp_id: {self.timestamp_id: >16} serial: {self.serial: >3} when: "{self.when:%a %F %T}" name: {Project._db("hget", "projects", str(self.id))!r}>'
+    return f'<LogProject hash:{hash(self): >20} id: {str(self.id)!r} state: {self.state!r} timestamp_id: {self.timestamp_id: >16} serial: {self.serial: >3} when: "{self.when:%a %F %T}" name: {_db("hget", "projects", str(self.id))!r}>'
 
   def __hash__(self) -> int:
 #    return int(self.timestamp_id.replace('-', ''))
@@ -254,13 +254,13 @@ class LogProject(Project):
     LogProject.add(self, self.state, at)
 
   def remove(self) -> None:
-    Project._db('xdel', 'logs', self.timestamp_id)
+    _db('xdel', 'logs', self.timestamp_id)
 
   @classmethod
   def add(kind, project:Project, state:str, at:datetime) -> None:
     _ts = str(at.timestamp()).replace('.', '')[:13]
-    Project._db('xadd', 'logs', dict(project=str(project.id), state=state), id=f'{_ts:0<13}-*')
-    Project._db('save')
+    _db('xadd', 'logs', dict(project=str(project.id), state=state), id=f'{_ts:0<13}-*')
+    _db('save')
 
   @classmethod
   def find(kind, matching:Union[str, None]=None, since:Union[datetime, None]=None, count:Union[int, None]=None, _version:Union[str, UUID, None]=None) -> list:
@@ -277,7 +277,7 @@ class LogProject(Project):
       key = f'logs-{str(_version)}'
 
     r = []
-    for tid, project in Project._db('xrange', key, start, '+', count=count):
+    for tid, project in _db('xrange', key, start, '+', count=count):
       log = Project.make(project, when=tid)
       if matching is None or log == matching:
         r.append(log)
@@ -304,8 +304,8 @@ class LogProject(Project):
   def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
     version_id = uuid4()
     new_key = f'logs-{str(version_id)}'
-    Project._db('hset', 'versions', new_key, reason)
-    Project._db('rename', 'logs', new_key)
+    _db('hset', 'versions', new_key, reason)
+    _db('rename', 'logs', new_key)
 
     for log in LogProject.find(_version=version_id):
       if log.when >= starting:
