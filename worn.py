@@ -4,11 +4,15 @@ import sys
 from lib import parse_args, debug
 from lib.project import Project, LogProject
 from lib.report import Report
-from lib.colors import colors
 from lib.gui import gui
 
 def main() -> None:
   p = parse_args()
+  if p.no_color
+    from lib.colors import colors
+  else:
+    from lib.nocolors import colors
+
   if p.action == 'show_id':
 
     print(Project.make(p.project))
@@ -68,9 +72,7 @@ See https://docs.python.org/3/library/datetime.html#datetime.datetime.strptime
 %H:%M:%S                     examples: "10:31", "22:22", etc
 
 %Y-%m-%d                     Date value
-                             examples: "2024-03-14"
-
-'''
+                             examples: "2024-03-14"'''
     print(msg)
   elif p.action in ['start', 'stop']:
 
