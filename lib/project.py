@@ -123,7 +123,6 @@ class Project(object):
     _db('hdel', 'projects', str(self.id))
     _db('save')
 
-
   @classmethod
   def make(kind, nameorid:Union[None, str, UUID], when:datetime=now()) -> Union['Project', 'LogProject', 'FauxProject']:
     if nameorid is None:
@@ -217,9 +216,7 @@ class Project(object):
 
   @classmethod
   def cache(kind, ticket:Union[str, int], id:str) -> None:
-    _key = f'tickets:{str(id)}'
-    _db('set', key, str(ticket), nx=True)
-    _db('expire', key, (WEEK+HOUR*12)-(DAY*now().weekday()+1), nx=True)
+    _db('hset', 'cache:tickets', str(id), str(ticket))
 
 class FauxProject(Project):
   def __init__(self):
