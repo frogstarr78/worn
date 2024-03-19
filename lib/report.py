@@ -4,25 +4,30 @@ from .project import Project, LogProject
 
 class Report(object):
   def __init__(self, data:dict[str, float], at:Union[datetime, None]=None, scale:str='h', include_all:bool=False, show_header:bool=True):
-    self.data = data
+    self.data = sorted(data.items(), key=lambda pt: pt[0].name.casefold())
     self.at = at
     self.scale = scale
     self.include_all = include_all
     self.show_header = show_header
 
   def mail(self, args:argparse.Namespace) -> None:
-    with smtplib.SMTP('localhost') as mc:
-      mc.set_debuglevel(1)
-      mc.sendmail('scott@viviotech.net', args.mailto, f'{self:{args.format}}')
+    if args.NOOP:
+      print(f'{self:{args.format}}')
+    else:
+      with smtplib.SMTP('localhost') as mc:
+        mc.set_debuglevel(1)
+        mc.sendmail('scott@viviotech.net', args.mailto, f'{self:{args.format}}')
 
-  def post(self, ticket:Union[str, int], comment:str) -> None:
+  def post(self, ticket:Union[str, int], comment:str, noop:bool=False) -> None:
     import requests
 
-    for project, time in self.data.items():
-      Project.cache(ticket, project.id)
+    for project, time in self.data:
+      Project.cache(ticket, project)
       _comment = comment.format(project=project)
-      debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={ticket}&time_spent={float(time)/MINUTE}&body="{_comment}"')
-      requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=ticket, time_spent=float(time)/MINUTE, body=_comment))
+      if noop:
+        debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={ticket}&time_spent={float(time)/MINUTE}&body="{_comment}"')
+      else:
+        requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=ticket, time_spent=float(time)/MINUTE, body=_comment))
 
   def print(self, fmt):
     print(f'{self:{fmt}}')
@@ -58,18 +63,24 @@ class Report(object):
     else:
       r = ''
 
-    for project, total in self.data.items():
+    all_total = sum(v for (p, v) in self.data)
+    t = ''
+    for project, total in self.data:
       if total == 0 and not self.include_all:
         continue
 
       if self.scale == 'w':
         r += '{:02}w {:02}d {:02}h {:02}m {:02}s'.format(*self.__how_long(total))
+        t =  '{:02}w {:02}d {:02}h {:02}m {:02}s'.format(*self.__how_long(all_total))
       if self.scale == 'd':
         r += '{:03}d {:02}h {:02}m {:02}s'.format(*self.__how_long(total))
+        t =  '{:03}d {:02}h {:02}m {:02}s'.format(*self.__how_long(all_total))
       if self.scale == 'h':
         r += '{:04}h {:02}m {:02}s'.format(*self.__how_long(total))
+        t =  '{:04}h {:02}m {:02}s'.format(*self.__how_long(all_total))
       if self.scale == 'm':
         r += '{:04}m {:02}s'.format(*self.__how_long(total))
+        t =  '{:04}m {:02}s'.format(*self.__how_long(all_total))
 
       if self.scale == 's':
         r += f'{int(total): >8}s'
@@ -79,6 +90,8 @@ class Report(object):
       r += f' id {project:id} project {project:name!r}'
       r += project.is_last() and Project.make('last').is_running() and f' ...{colors.bg.blue}and counting{colors.reset}' or ''
       r += "\n"
+    if len(t) > 0:
+        r += f'{t}                                                                Total\n'
     return r
 
   def __csv_format(self) -> str:
@@ -96,7 +109,7 @@ class Report(object):
     r += isinstance(self.at, datetime) and ',since' or ''
     r += "\n"
 
-    for project, total in self.data.items():
+    for project, total in self.data:
       if total == 0 and not self.include_all:
         continue
 
@@ -124,22 +137,31 @@ class Report(object):
     else:
       r = ''
 
-    for project, total in self.data.items():
+    all_total = sum(v for (p, v) in self.data)
+    t = ''
+    for project, total in self.data:
       if total == 0 and not self.include_all:
         continue
 
       if self.scale in ['w', 'd', 'h']:
         duration = self.__how_long(total)
+        total_duration = self.__how_long(all_total)
         r += '{:03}:'.format(duration[0])
         r += ('{:02}:'*(len(duration)-1)).rstrip(':').format(*duration[1:])
+        t =  '{:03}:'.format(total_duration[0])
+        t += ('{:02}:'*(len(total_duration)-1)).rstrip(':').format(*total_duration[1:])
+        t += ' Total'
 
       if self.scale == 'm':
         r += '{:04}:{:02}'.format(*self.__how_long(total))
+        t =  '{:04}:{:02} Total'.format(*self.__how_long(all_total))
 
       if self.scale == 's':
         r += f'{int(total): >8}'
+        t = ''
 
       r += f' {project:name!r}\n'
+    r += f'{t}\n'
     return r
 
   def __format__(self, fmt_spec: Any) -> str:
