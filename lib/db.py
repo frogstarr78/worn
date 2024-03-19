@@ -1,24 +1,5 @@
 from . import *
-
-def _db(cmd, key:str='', *args, **kw) -> Any:
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    if int(conn.info('default').get('redis_version', '0')[0]) < 7:
-      raise Exception('This software requires version 7+ of Redis.')
-
-    if cmd.casefold() == 'shutdown':
-      return None
-
-    if hasattr(conn, cmd.casefold()) and callable(f := getattr(conn, cmd.casefold())):
-      if cmd in ['save', 'bgsave', 'ping']:
-        return f()
-      else:
-        return f(str(key), *args, **kw)
-    else:
-      return None
-
-def exists(key:str) -> bool:
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    return conn.exists(str(key)) == 1
+import redis
 
 def xrange(key:str, start:str=None, end:str=None, count:Union[int, None]=None, reverse:bool=False) -> list:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
@@ -35,9 +16,12 @@ def xinfo(key:str, hkey:Union[str, None]=None, default:Any=None, kind:str='strea
     else:
       return info.get(str(hkey), default)
 
-def hexists(key:str, hkey:str) -> bool:
+def has(key:str, hkey:str=None) -> bool:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    return exists(str(key)) and conn.hexists(str(key), str(hkey))
+    if hkey is None:
+      return conn.exists(str(key)) == 1
+    else:
+      return has(key) and conn.hexists(str(key), str(hkey))
 
 def keys(key:str) -> list:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
@@ -53,40 +37,42 @@ def get(key:str, hkey:Any=None) -> Union[str, dict]:
     else:
       return conn.hget(str(key), str(hkey))
 
-def xdel(key:str, id:Union[int, str]) -> None:
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    conn.xdel(key, str(id))
-    conn.save()
-
-def xadd(key:str, ts:Union[int, str, None]=None, **record) -> None:
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    if ts is None:
-      conn.xadd(str(key), record)
-    elif ts.count('-') == 1:
-      conn.xadd(str(key), record, id=ts)
-    else:
-      conn.xadd(str(key), record, id=f'{ts[:13]:0<13}-*')
-    conn.save()
-
 def rename(key:str, newkey:str) -> None:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     conn.rename(str(key), str(newkey))
-    conn.save()
+    save()
 
-def hdel(key:str, hkey:str) -> None:
+def rm(key:str, sub:Union[int, str, None]=None) -> None:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    conn.hdel(key, hkey)
-    conn.save()
+    if sub is None:
+      conn.delete(str(key))
+    elif conn.type(str(key)) == 'hash':
+      conn.hdel(str(key), str(sub))
+    elif conn.type(str(key)) == 'stream':
+      conn.xdel(key, str(sub))
+    save()
 
-def set(key:str, val:Union[str, int, dict], expire:Union[int, None]=None, nx:bool=False) -> None:
+def add(key:str, val:Union[str, int, dict]=None, expire:Union[int, None]=None, nx:bool=False, **record) -> None:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    if isinstance(val, dict):
-      conn.hset(str(key), mapping=val)
+    if (_type := conn.type(str(key))) == 'hash':
+      if nx:
+        for _k, _v in val.items():
+          conn.hsetnx(str(key), str(_k), str(_v))
+      else:
+        conn.hset(str(key), mapping=dict([(str(_k), str(_v)) for _k, _v in val.items()]))
+    elif _type == 'stream':
+      if val is None:
+        conn.xadd(str(key), record)
+      elif istimestamp_id(val):
+        conn.xadd(str(key), record, id=val)
+      elif isinstance(val, int) or 9 < len(val) < 14:
+        conn.xadd(str(key), record, id=f'{str(val)[:13]:0<13}-*')
     else:
-      conn.set(str(key), str(val))
+      conn.set(str(key), str(val), nx=nx)
+
     if expire is not None:
       conn.expire(str(key), expire)
-    conn.save()
+    save()
 
 def save(bg=False) -> None:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
