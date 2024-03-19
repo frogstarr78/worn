@@ -1,7 +1,6 @@
 from __future__ import annotations
 import sys
 from uuid import uuid4, UUID
-import redis
 import argparse
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
@@ -22,7 +21,7 @@ def debug(*msgs) -> None:
 now = datetime.now
 
 def istimestamp_id(s:str):
-  return isinstance(s, str) and re.search(r'^\d{13}-(\d+|\*)$', s)
+  return isinstance(s, str) and re.search(r'^\d{10,13}-(\d+|\*)$', s)
 
 def parse_timestamp(tsin):
   if isinstance(tsin, (int, float)):
@@ -67,6 +66,8 @@ def _datetime(dtin:str) -> datetime:
   if dtin.isdigit() or istimestamp_id(dtin):
     '''"parse" a timestamp'''
     return parse_timestamp(dtin)
+  elif dtin == 'last':
+    return project.Project.make('last').when
   elif dtin == 'now':
     '''"parse" a "now"'''
     return now()
@@ -118,6 +119,49 @@ def _datetime(dtin:str) -> datetime:
     '''parse a date'''
     return datetime.strptime(dtin, '%Y-%m-%d')
 
+def explain_dates():
+    msg = '''The system should know how to parse these custom pseudo-values and formats.
+
+  In all these instances, case is ignored.
+  Pseudo-values "understood" by the system.
+
+  "now"                 This means right now, to include microseconds. It utilizes datetime.datetime.now(). The default value in most cases.
+  "today"               Similar to now, however, it starts at Midnight local time.
+  "yesterday"           Same as today, except yeterday
+
+  weekdays              These are understood as the last occurance of the named weekday. So if today is Tuesday and you enter Wednesday, it will be interpreted as the previous Wednesday, approximately a week ago.
+                        If you enter Monday, though, it will be understood as meaning yesterday (although at current time, not midnight like "today" and "yesterday" are).
+                        examples: monday, Tuesday, Sunday, etc
+
+  abbreviated weekdays: same as weekdays
+                        examples: Thur, fri, etc
+
+  x days ago:           Understood as midnight x days ago.  If today is Friday, then this means midnight on Monday of this week.
+                        examples: "5 days ago".
+
+
+  Formats "understood" by the system"
+  uniz timestamp:              Standard unix time stamps, which may or may not include microseconds (which is necessary for the software to understand redis stream timestamp ids).
+                               examples: 17095835400, 17102610000, 1710262561568, 1710478747033
+
+  redis stream timestamps:     See https://redis.io/docs/data-types/streams/#entry-ids
+                               examples: 17095835400-0, 17102610000-2, 1710262561568-0, 1710478747033-0
+
+  See https://docs.python.org/3/library/datetime.html#datetime.datetime.strptime
+
+  %Y-%m-%d %I:%M:%S %p         Datetime value with trailing am/pm
+                               examples: "2024-03-14 11:54:02 pm"
+
+  %Y-%m-%d %H:%M:%S            Datetime value with 24-hour clock
+                               examples: "2024-03-14 23:54:02"
+
+  %H:%M                        Time value. These are interpreted as today at the time specified, which means, if you're not careful, you could unintentionally enter a time in the future.
+  %H:%M:%S                     examples: "10:31", "22:22", etc
+
+  %Y-%m-%d                     Date value
+                             examples: "2024-03-14"'''
+    print(msg)
+
 def email(s):
   if '@' not in s:
     raise TypeError("Invalid email address.")
@@ -159,7 +203,7 @@ def parse_args() -> argparse.Namespace:
   rm.set_defaults(action='rm')
 
   edit = sub.add_parser('edit', help='Change the recorded time of a log entry.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  edit.add_argument('at', type=_datetime, metavar='TIMESTAMP_ID|DATETIME',         help='The original log entry time to change.')
+  edit.add_argument('at', type=_datetime, metavar='LAST|TIMESTAMP_ID|DATETIME',         help='The original log entry time to change.')
   edit.add_argument('-s', '--state',  type=str, choices=('started', 'stopped'),    help='Change the log entry to this state.')
   edit.add_argument('-p', '--project', type=str,                                   help='Change the log entry to this project.')
   edit.add_argument('-t', '--to',     type=_datetime,      metavar='DATETIME',     help='The updated time to set.')
@@ -195,15 +239,16 @@ def parse_args() -> argparse.Namespace:
   rep.add_argument('-l', '--largest_scale', type=str,       choices='w,d,h,m,s'.split(','),                                    default='h',                            help='The largest component of time to display: w => Weeks; d => Days; h => Hours; m => Minutes; s => Seconds.')
   rep.add_argument('-f', '--format',        type=str,       choices='simple,csv,time'.split(','),                              default='simple',                       help='Output the report in this format.')
   rep.add_argument('-c', '--comment',       type=str,        nargs='+',                                                        default='Time spent on {project.name}', help='Comment to make in tickets when reporting to a ticket.')
-  rep.add_argument('-N', '--no_header',     action='store_true',                                                               default=False,                          help="Don't display the header in the output.")
+  rep.add_argument('-H', '--no_header',     action='store_true',                                                               default=False,                          help="Don't display the header in the output.")
+  rep.add_argument('-N', '--NOOP'     ,     action='store_true',                                                               default=False,                          help="Don't include color in the output.")
   prep = rep.add_mutually_exclusive_group(required=False)
   prep.add_argument('-p', '--project',                       nargs='+',                      metavar='NAME|UUID',                                                      help='Project name or uuid.')
   prep.add_argument('-a', '--include_all',                   action='store_true',                                              default=False,                          help='Display ALL projects including those without any tracked time.')
   trep = rep.add_mutually_exclusive_group(required=False)
   trep.add_argument('-s', '--since',         type=_datetime,                                 metavar='DATETIME',                                                       help='Report details since this datetime.')
-  trep.add_argument('-b', '--between',       type=_datetime, nargs=2,                        metavar=('DATETIME', 'DATETIME'),                                         help='Report details between these date and times.')
+#  trep.add_argument('-b', '--between',       type=_datetime, nargs=2,                        metavar=('DATETIME', 'DATETIME'),                                         help='Report details between these date and times.')
   rrep = rep.add_mutually_exclusive_group(required=False)
-  rrep.add_argument('-t', '--ticket',       type=int,                                                                          default=None,                           help='Document the report to this ticket.')
+  rrep.add_argument('-t', '--ticket',                                                                                          default=None,                           help='Document the report to this ticket.')
   rrep.add_argument('-m', '--mailto',       type=email,                                                                        default=None,                           help='Email the report to this user.')
   rep.set_defaults(action='report')
 
