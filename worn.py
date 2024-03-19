@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import sys
-from lib import parse_args, debug
+from lib import parse_args, debug, explain_dates
 from lib.project import Project, LogProject
 from lib.report import Report
 from lib.gui import gui
@@ -33,47 +33,7 @@ def main() -> None:
       print(log.log_format(p.timestamp))
 
   elif p.action == 'explain_dates':
-    msg = '''The system should know how to parse these custom pseudo-values and formats.
-
-In all these instances, case is ignored.
-Pseudo-values "understood" by the system.
-
-"now"                 This means right now, to include microseconds. It utilizes datetime.datetime.now(). The default value in most cases.
-"today"               Similar to now, however, it starts at Midnight local time.
-"yesterday"           Same as today, except yeterday
-
-weekdays              These are understood as the last occurance of the named weekday. So if today is Tuesday and you enter Wednesday, it will be interpreted as the previous Wednesday, approximately a week ago.
-                      If you enter Monday, though, it will be understood as meaning yesterday (although at current time, not midnight like "today" and "yesterday" are).
-                      examples: monday, Tuesday, Sunday, etc
-
-abbreviated weekdays: same as weekdays
-                      examples: Thur, fri, etc
-
-x days ago:           Understood as midnight x days ago.  If today is Friday, then this means midnight on Monday of this week.
-                      examples: "5 days ago".
-
-
-Formats "understood" by the system"
-uniz timestamp:              Standard unix time stamps, which may or may not include microseconds (which is necessary for the software to understand redis stream timestamp ids).
-                             examples: 17095835400, 17102610000, 1710262561568, 1710478747033
-
-redis stream timestamps:     See https://redis.io/docs/data-types/streams/#entry-ids
-                             examples: 17095835400-0, 17102610000-2, 1710262561568-0, 1710478747033-0
-
-See https://docs.python.org/3/library/datetime.html#datetime.datetime.strptime
-
-%Y-%m-%d %I:%M:%S %p         Datetime value with trailing am/pm
-                             examples: "2024-03-14 11:54:02 pm"
-
-%Y-%m-%d %H:%M:%S            Datetime value with 24-hour clock
-                             examples: "2024-03-14 23:54:02"
-
-%H:%M                        Time value. These are interpreted as today at the time specified, which means, if you're not careful, you could unintentionally enter a time in the future.
-%H:%M:%S                     examples: "10:31", "22:22", etc
-
-%Y-%m-%d                     Date value
-                             examples: "2024-03-14"'''
-    print(msg)
+    explain_dates()
   elif p.action in ['start', 'stop']:
 
     projects = Project.nearest_project_by_name(p.project)
@@ -132,15 +92,22 @@ See https://docs.python.org/3/library/datetime.html#datetime.datetime.strptime
 
     if p.since:
       when = p.since
-    elif p.between:
-      when = p.between
+#    elif p.between:
+#      when = p.between
     else:
       when = None
 
     data = LogProject.report(p.project, when)
     report = Report(data, when, p.largest_scale, p.include_all, not p.no_header)
     if p.ticket:
-      report.post(p.ticket, p.comment)
+      if p.ticket == 'last' and p.project:
+        _ticket = db.get('cache:tickets', Project.make(p.project))
+      elif p.ticket.isdigit():
+        _ticket = int(p.ticket)
+      else:
+        debug(f'Unable to report results to unknown ticket')
+        sys.exit(1)
+      report.post(_ticket, ' '.join(p.comment).strip(), noop=p.NOOP)
     elif p.mailto:
       report.mail(p)
     else:
@@ -161,10 +128,26 @@ See https://docs.python.org/3/library/datetime.html#datetime.datetime.strptime
           raise Exception(f"The first log entry {all_logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{p.to:%F %T}'.\nThis is unacceptable. Failing.")
 
       LogProject.edit_log_time(p.at, p.to, ' '.join(p.reason))
-    elif p.state:
-      raise Exception("Implement me!")
-    elif p.project:
-      raise Exception("Implement me!")
+    else:
+      last = Project.make('last')
+      project = LogProject.find(since=p.at, count=1)[0]
+      if project != last or project.when != last.when:
+        debug(f'Unable to change no-last project state')
+        sys.exit(1)
+
+      project.remove()
+
+      if p.project:
+        _project = Project.make(p.project, when=project.when)
+      else:
+        _project = project
+
+      if p.state:
+        _state = p.state
+      else:
+        _state = project.state
+
+      LogProject.add(_project, _state, _project.when)
 
 if __name__ == '__main__':
   main()
