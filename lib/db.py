@@ -1,77 +1,83 @@
 from . import *
 import redis
 
-def xrange(key:str, start:str=None, end:str=None, count:Union[int, None]=None, reverse:bool=False) -> list:
+def xrange(key:str, start:str=None, end:str=None, count:int | None=None, reverse:bool=False) -> list:
+  _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if reverse:
-      return conn.xrevrange(str(key), start or '+', end or '-', count=count)
+      return conn.xrevrange(_key, start or '+', end or '-', count=count)
     else:
-      return conn.xrange(   str(key), start or '-', end or '+', count=count)
+      return conn.xrange(   _key, start or '-', end or '+', count=count)
 
-def xinfo(key:str, hkey:Union[str, None]=None, default:Any=None, kind:str='stream') -> Union[dict, str]:
+def xinfo(key:str, hkey:str | None=None, default:Any=None, kind:str='stream') -> dict | str:
+  _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    info = conn.xinfo_stream(str(key))
+    info = conn.xinfo_stream(_key)
     if hkey is None:
       return info
     else:
       return info.get(str(hkey), default)
 
 def has(key:str, hkey:str=None) -> bool:
+  _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if hkey is None:
-      return conn.exists(str(key)) == 1
+      return conn.exists(_key) == 1
     else:
-      return has(key) and conn.hexists(str(key), str(hkey))
+      return has(_key) and conn.hexists(_key, str(hkey))
 
 def keys(key:str) -> list:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    return conn.hkeys(key)
+    return conn.hkeys(str(key))
 
-def get(key:str, hkey:Any=None) -> Union[str, dict]:
+def get(key:str, hkey:Any=None) -> str | dict:
+  _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if hkey is None:
-      if conn.type(str(key)) == 'hash':
-        return conn.hgetall(str(key))
+      if conn.type(_key) == 'hash':
+        return conn.hgetall(_key)
       else:
-        return conn.get(str(key))
+        return conn.get(_key)
     else:
-      return conn.hget(str(key), str(hkey))
+      return conn.hget(_key, str(hkey))
 
 def rename(key:str, newkey:str) -> None:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     conn.rename(str(key), str(newkey))
     save()
 
-def rm(key:str, sub:Union[int, str, None]=None) -> None:
+def rm(key:str, sub:int | str | None=None) -> None:
+  _key = str(key)
+
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if sub is None:
-      conn.delete(str(key))
-    elif conn.type(str(key)) == 'hash':
-      conn.hdel(str(key), str(sub))
-    elif conn.type(str(key)) == 'stream':
+      conn.delete(_key)
+    elif conn.type(_key) == 'hash':
+      conn.hdel(_key, str(sub))
+    elif conn.type(_key) == 'stream':
       conn.xdel(key, str(sub))
     save()
 
-def add(key:str, val:Union[str, int, dict]=None, expire:Union[int, None]=None, nx:bool=False, **record) -> None:
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    if (_type := conn.type(str(key))) == 'hash':
-      if nx:
-        for _k, _v in val.items():
-          conn.hsetnx(str(key), str(_k), str(_v))
-      else:
-        conn.hset(str(key), mapping=dict([(str(_k), str(_v)) for _k, _v in val.items()]))
-    elif _type == 'stream':
-      if val is None:
-        conn.xadd(str(key), record)
-      elif istimestamp_id(val):
-        conn.xadd(str(key), record, id=val)
-      elif isinstance(val, int) or 9 < len(val) < 14:
-        conn.xadd(str(key), record, id=f'{str(val)[:13]:0<13}-*')
-    else:
-      conn.set(str(key), str(val), nx=nx)
+def add(key:str, val:str | int | dict=None, expire:int | None=None, nx:bool=False) -> None:
+  if isinstance(val, dict):
+    _val = dict([(str(_k), str(_v)) for _k, _v in val.items()])
 
-    if expire is not None:
-      conn.expire(str(key), expire)
+  _key = str(key)
+
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+    if (_type := conn.type(_key)) == 'hash':
+      if nx:
+        for _k, _v in _val.items():
+          conn.hsetnx(_key, _k, _v)
+      else:
+        conn.hset(_key, mapping=_val)
+    elif _type == 'stream':
+      conn.xadd(_key, _val, id=val.pop('id', '*'))
+    elif isinstance(val, dict):
+      conn.hset(_key, mapping=_val)
+    else:
+      conn.set(_key, str(val), nx=nx, ex=expire)
+
     save()
 
 def save(bg=False) -> None:

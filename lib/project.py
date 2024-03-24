@@ -3,6 +3,8 @@ from .colors import colors
 from . import db
 
 class Project(object):
+  __match_args__ = ("id","name")
+
   def __init__(self, id:UUID, name:str, state:str='stopped', when:datetime=now()):
     if isuuid(id) and isuuid(name):
       raise Exception(f'Attempting to set the project id {self.id!r} to a uuid bad project name {self.name!r}!')
@@ -31,7 +33,7 @@ class Project(object):
   def __str__(self):
     return f'<Project hash:{hash(self)} id: {self.id!r} name: {db.get("projects", self.id)!r} state: {self.state!r} when: {self.when.strftime("%a %F %T")!r}>'
 
-  def __format__(self, fmt_spec: Any) -> str:
+  def __format__(self, fmt_spec:Any) -> str:
     if 'id' in fmt_spec:
       return f'{self.id}'
     elif 'name' in fmt_spec:
@@ -65,7 +67,7 @@ class Project(object):
       if not future_time.strip().casefold().startswith('y'):
         return
     self.add()
-    LogProject.add(self, state, at)
+    LogProject(self.id, self.name, state, at).add()
 
   def stop(self, at:datetime=now()) -> None:
     if self.is_running():
@@ -91,61 +93,50 @@ class Project(object):
     db.add('projects', {new.name.casefold(): self.id})
 
   def remove(self) -> None:
-    for log_project in LogProject.find(matching=self):
+    for log_project in LogProject.all_matching(self):
       log_project.remove()
 
     db.rm('projects', self.name)
     db.rm('projects', str(self.id))
 
   @classmethod
-  def make(kind, nameorid:Union[None, str, UUID], when:datetime=now()) -> Union['Project', 'LogProject', 'FauxProject']:
-    if nameorid is None:
-      debug(f"Project {nameorid!r} was empty.")
-      return FauxProject()
-
-    elif isinstance(nameorid, Sequence) and len(nameorid) == 0:
-      debug(f"Project {nameorid!r} was empty.")
-      return FauxProject()
-
-    if isinstance(nameorid, Project):
-      return nameorid
-    elif isinstance(nameorid, UUID):
-      if db.has('projects', str(nameorid)):
-        return Project(nameorid, db.get('projects', nameorid))
-      else:
-        raise Exception(f'Name or id {nameorid!r} is not found in the list of available projects.')
-
-    elif isinstance(nameorid, str):
-      if nameorid.casefold().strip() == 'last':
+  def make(kind, nameorid:Any, when:datetime=now()) -> Self:
+    match nameorid:
+      case None | [] | () | {}:
+        debug(f"Project {nameorid!r} was empty.")
+        return FauxProject()
+      case {'id': _id, 'project': _, 'state': state}:
+        return LogProject(_id, db.get('projects', _id), state, when)
+      case {'project': nameorid as _uuid} if isuuid(_uuid):
+        _id = UUID(nameorid.get('project'))
+        return LogProject(_id, db.get('projects', _id), nameorid.get('state'), when)
+      case 'last' if len(db.xrange('logs', count=1, reverse=True)) == 0:
+        return FauxProject()
+      case 'last':
         records = db.xrange('logs', count=1, reverse=True)
-        if len(records) == 0:
-          return FauxProject()
-        else:
-          tsid, last = records[0]
-          _id = UUID(last.get('project'))
-          return Project(_id, db.get('projects', _id), last.get('state', 'stopped'), parse_timestamp(tsid))
-      elif isuuid(nameorid) and db.has('projects', nameorid):
+        tsid, last = records[0]
+        _id = UUID(last.get('project'))
+        return Project(_id, db.get('projects', _id), last.get('state', 'stopped'), parse_timestamp(tsid))
+      case str(nameorid) if isinstance(nameorid, UUID) and db.has('projects', str(nameorid)):
+        return Project(nameorid, db.get('projects', nameorid))
+      case str(nameorid) if isuuid(nameorid) and db.has('projects', nameorid):
         return Project(UUID(nameorid), db.get('projects', nameorid))
-      elif istimestamp_id(nameorid):
-        record = db.xrange('logs', start=nameorid, count=1)
-        if len(record) > 0:
-          return Project.make(record[0][1], record[0][0])
-        else:
-          raise Exception(f'No log entry found with id {nameorid}.')
-      elif db.has('projects', nameorid.casefold().strip()):
+      case str(nameorid) if istimestamp_id(nameorid) and len(db.xrange('logs', start=nameorid, count=1)) > 0:
+        record = db.xrange('logs', start=nameorid, count=1)[0]
+        return Project.make(record[1], record[0])
+      case str(nameorid) if db.has('projects', nameorid.casefold().strip()):
         _id = UUID(db.get('projects', nameorid.casefold().strip()))
         return Project(_id, db.get('projects', _id))
-      else:
+      case str(nameorid):
         project = Project(uuid4(), nameorid)
         project.add()
         return project
-    elif isinstance(nameorid, dict):
-      _id = UUID(nameorid.get('project'))
-      return LogProject(_id, db.get('projects', _id), nameorid.get('state'), when)
-    else:
-      msg = f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.'
-      debug(msg)
-      raise Exception(msg)
+      case Project(id=nameorid) | Project(name=nameorid):
+        return nameorid
+      case _:
+        debug(msg := f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
+        raise Exception(msg)
+
 
   @classmethod
   def nearest_project_by_name(kind, name:str) -> set[str]:
@@ -189,9 +180,9 @@ class Project(object):
     return [Project.make(UUID(pid)) for pid, project in sorted(db.get('projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
 
   @classmethod
-  def cache(kind, ticket:Union[str, int], project) -> None:
-    db.add('cache:tickets', {str(project.id): str(ticket)})
-    db.add('cache:recorded', {str(project.id), project.when})
+  def cache(kind, ticket:str | int, project) -> None:
+    db.add('cache:tickets', {project.id: ticket})
+    db.add('cache:recorded', {project.id: project.when})
 
 class FauxProject(Project):
   def __init__(self):
@@ -222,22 +213,16 @@ class LogProject(Project):
     else:
       return super().log_format()
 
-  def add(self, at:datetime) -> None:
-    LogProject.add(self, self.state, at)
+  def add(self) -> None:
+    _ts = str(self.when.timestamp()).replace('.', '')[:13]
+    db.add('logs', {'id': f'{_ts:0<13}-*', 'project': self.id, 'state': self.state})
 
   def remove(self) -> None:
     db.rm('logs', self.timestamp_id)
 
   @classmethod
-  def add(kind, project:Project, state:str, at:datetime) -> None:
-    _ts = str(at.timestamp()).replace('.', '')[:13]
-    db.add('logs', ts=f'{_ts:0<13}-*', project=str(project.id), state=state)
-
-  @classmethod
-  def find(kind, matching:Union[str, None]=None, since:Union[datetime, None]=None, count:Union[int, None]=None, _version:Union[str, UUID, None]=None) -> list:
-    if since is None:
-      start = '-'
-    elif isinstance(since, str) and istimestamp_id(since):
+  def all_matching_since(kind, matching:str, since:datetime, count:int=None, _version:str | UUID=None) -> list:
+    if isinstance(since, str) and istimestamp_id(since):
       start = since.strip()
     else:
       _ts = str(parse_timestamp(since).timestamp()).replace('.', '')[:13]
@@ -247,19 +232,48 @@ class LogProject(Project):
     if _version is not None:
       key = f'logs-{str(_version)}'
 
-    r = []
-    for tid, project in db.xrange(key, start=start, count=count):
-      log = Project.make(project, when=tid)
-      if matching is None or log == matching:
-        r.append(log)
-
-    return r
+    return (Project.make(project, when=tid) for tid, project in db.xrange(key, start='-', count=count) if project == matching)
 
   @classmethod
-  def report(kind, matching=None, since:Union[datetime, None]=None) -> dict[Project, float]:
+  def all_since(kind, since:datetime, count:int=None, _version:str | UUID=None) -> list:
+    if isinstance(since, str) and istimestamp_id(since):
+      start = since.strip()
+    else:
+      _ts = str(parse_timestamp(since).timestamp()).replace('.', '')[:13]
+      start = f'{_ts.lstrip():0<13}-0'
+
+    key = 'logs'
+    if _version is not None:
+      key = f'logs-{str(_version)}'
+
+    return (Project.make(project, when=tid) for tid, project in db.xrange(key, start=start, count=count))
+
+  @classmethod
+  def all_matching(kind, matching:str, count:int=None, _version:str | UUID=None) -> list:
+    key = 'logs'
+    if _version is not None:
+      key = f'logs-{str(_version)}'
+
+    return (Project.make(project, when=tid) for tid, project in db.xrange(key, start='-', count=count) if project == matching)
+
+  @classmethod
+  def all(kind, count:int=None, _version:str | UUID=None) -> list:
+    key = 'logs'
+    if _version is not None:
+      key = f'logs-{str(_version)}'
+
+    return (Project.make(project, when=tid) for tid, project in db.xrange(key, start='-', count=count))
+
+  @classmethod
+  def collate(kind, logs:list, add_last:bool=False, without_time:bool=False) -> dict[Project, float]:
     stats = {}
     accum = 0
-    for log in LogProject.find(matching, since):
+
+    if without_time:
+      for project in Project.all():
+        stats.setdefault(project, 0)
+
+    for log in logs:
       stats.setdefault(log, 0)
       if log.is_running():
         accum = log.when.timestamp()
@@ -267,23 +281,16 @@ class LogProject(Project):
         stats[log] += log.when.timestamp()-accum
         accum = 0
 
-    if matching is None:
-      for project in Project.all():
-        stats.setdefault(project, 0)
-
-    last = Project.make('last')
-    if ( matching is None or last == matching ) and last.is_running():
-      stats[last] += int(now().timestamp()-last.when.timestamp())
     return stats
 
   @classmethod
   def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
     version_id = uuid4()
     new_key = f'logs-{str(version_id)}'
-    db.add('versions', new_key, reason)
+    db.add('versions', {new_key: reason})
     db.rename('logs', new_key)
 
-    for log in LogProject.find(_version=version_id):
+    for log in LogProject.all(_version=version_id):
       if log.when >= starting:
         _log = LogProject(log.id, log.name, log.state, to)
         _log.log(log.state, to)

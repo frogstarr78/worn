@@ -3,7 +3,7 @@ from .colors import colors
 from .project import Project, LogProject
 
 class Report(object):
-  def __init__(self, data:dict[str, float], at:Union[datetime, None]=None, scale:str='h', include_all:bool=False, show_header:bool=True):
+  def __init__(self, data:dict[str, float], at:datetime | None=None, scale:str='h', include_all:bool=False, show_header:bool=True):
     self.data = sorted(data.items(), key=lambda pt: pt[0].name.casefold())
     self.at = at
     self.scale = scale
@@ -18,16 +18,20 @@ class Report(object):
         mc.set_debuglevel(1)
         mc.sendmail('scott@viviotech.net', args.mailto, f'{self:{args.format}}')
 
-  def post(self, ticket:Union[str, int], comment:str, noop:bool=False) -> None:
+  def post(self, ticket:str | int, comment:str, noop:bool=False) -> None:
     import requests
 
+    r = {}
     for project, time in self.data:
       Project.cache(ticket, project)
       _comment = comment.format(project=project)
       if noop:
         debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={ticket}&time_spent={float(time)/MINUTE}&body="{_comment}"')
+        r.add(False)
       else:
-        requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=ticket, time_spent=float(time)/MINUTE, body=_comment))
+        resp = requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=ticket, time_spent=float(time)/MINUTE, body=_comment))
+        r.add(resp.status_code <= 400)
+    return all(isinstance(_, bool) and _ for _ in r) and 0 or 1
 
   def print(self, fmt):
     print(f'{self:{fmt}}')

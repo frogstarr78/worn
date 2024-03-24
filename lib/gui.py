@@ -1,10 +1,20 @@
 from . import *
 from .project import Project
 from tkinter import ttk, Tk, StringVar, N, S, E, W
+from pathlib import Path
+from os import getpid
+
+CONTROL = Path(f'~/run/worn.{getpid()}').expanduser()
 
 def gui() -> None:
+  if CONTROL.exists(): return
+
   root = Tk()
   root.title('Worn')
+
+  def bye(*e):
+    CONTROL.unlink(missing_ok=True)
+    root.destroy()
 
   proj = StringVar()
 
@@ -42,7 +52,7 @@ def gui() -> None:
 
   s = ttk.Button(bfrm, text="(Re-)Start", underline=5)
   t = ttk.Button(bfrm, text="Stop", underline=1)
-  q = ttk.Button(bfrm, text="Quit", underline=0, command=root.destroy)
+  q = ttk.Button(bfrm, text="Quit", underline=0, command=bye)
 
   s.grid(row=0, column=0)#, sticky=(N, S))
   t.grid(row=0, column=1)#, sticky=(N, S, E, W))
@@ -52,7 +62,7 @@ def gui() -> None:
   root.bind('<Alt-p>', lambda *e: c.focus_set())
   root.bind('<Alt-s>', lambda *e: s.focus_set())
   root.bind('<Alt-t>', lambda *e: t.focus_set())
-  root.bind('<Alt-q>', lambda *e: root.destroy())
+  root.bind('<Alt-q>', bye)
 
   def gui_action(event) -> None:
     button_state = event.widget.cget('text')
@@ -68,7 +78,7 @@ def gui() -> None:
       project.stop()
     else:
       debug(f"Unknown state {state!r}")
-    root.destroy()
+    bye()
 
   s.bind('<ButtonPress>',    lambda e: gui_action(e))
   s.bind('<KeyPress-space>', lambda e: gui_action(e))
@@ -83,5 +93,6 @@ def gui() -> None:
 #  frm.rowconfigure(2,     weight=5)
 #  frm.rowconfigure(3,     weight=5)
 
+  root.protocol("WM_DELETE_WINDOW", bye)
+  CONTROL.touch()
   root.mainloop()
-
