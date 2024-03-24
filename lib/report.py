@@ -3,7 +3,7 @@ from .colors import colors
 from .project import Project, LogProject
 
 class Report(object):
-  def __init__(self, data:dict[str, float], at:datetime | None=None, scale:str='h', include_all:bool=False, show_header:bool=True):
+  def __init__(self, data:dict[str, float], at:datetime=None, scale:str='h', include_all:bool=False, show_header:bool=True):
     self.data = sorted(data.items(), key=lambda pt: pt[0].name.casefold())
     self.at = at
     self.scale = scale
