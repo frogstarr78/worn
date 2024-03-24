@@ -4,6 +4,7 @@ import sys
 from lib import parse_args, debug
 from lib.project import Project, LogProject
 from lib.report import Report
+from lib import db
 from argparse import Namespace
 
 OK = 0
@@ -53,83 +54,56 @@ def main() -> None:
           fmt += f' ({colors.underline}{colors.bg.blue}currently running{colors.reset})'
         print(fmt)
     case Namespace(action='show', display='logs'):
-      for log in LogProject.find(p.project, p.since):
+      for log in LogProject.find_matching_since(p.project, p.since):
         print(log.log_format(p.timestamp))
     case Namespace(action='show'):
       sharg.print_help()
-    case Namespace(action='edit', since=None):
-      pass
-#      if p.to:
-#        if p.reason is None:
-#          debug('You are required to provide a reason when changing the time of an entry. Please retry the last command while adding a -r|--reason argument.')
-#          sys.exit(ERR)
-#
-#        logs = LogProject.find(since=p.at, count=2)
-#
-#        if len(logs) > 1:
-#          if logs[0].when == logs[1].when:
-#            pass
-#          elif all_logs[1].when < p.to:
-#            raise Exception(f"The first log entry {all_logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{p.to:%F %T}'.\nThis is unacceptable. Failing.")
-#
-#        LogProject.edit_log_time(p.at, p.to, ' '.join(p.reason))
-#      else:
-#        last = Project.make('last')
-#        project = LogProject.find(since=p.at, count=1)[0]
-#        if project != last or project.when != last.when:
-#          debug(f'Unable to change no-last project state')
-#          sys.exit(ERR)
-#
-#        project.remove()
-#
-#        if p.project:
-#          _project = Project.make(p.project, when=project.when)
-#        else:
-#          _project = project
-#
-#        if p.state:
-#          _state = p.state
-#        else:
-#          _state = project.state
-#
-#        LogProject(_project.id, _project.name, _state, _project.when).add()
-      earg.print_help()
+    case Namespace(action='edit', to=to, reason=None):
+        debug('You are required to provide a reason when changing the time of an entry. Please retry the last command while adding a -r|--reason argument.')
+        sys.exit(ERR)
+    case Namespace(action='edit', to=to, reason=[reason]) | Namespace(action='edit', to=to, reason=[*reason]):
+      LogProject.edit_log_time(since, to, ' '.join(reason))
+    case Namespace(action='edit', to=to, reason=str(reason)):
+      LogProject.edit_log_time(since, to, reason)
+    case Namespace(action='edit', since=at, state=new_state):
+      LogProject.edit_last_log_state(new_state)
+    case Namespace(action='edit', since=at, project=new_name):
+      LogProject.edit_last_log_name(new_name)
     case Namespace(action='edit'):
       earg.print_help()
-    case Namespace(action='report', project=nameorid, since=None, ticket=ticket, comment=[*comment]):
-      project = Project.make(nameorid)
-      if not db.has('cache:recorded', project.id):
-        raise Exception(f'Unable to determine the time frame for when to report the details of {p.project!r}')
-
+    case Namespace(action='report', project=None, since=None, ticket=ticket):
+      debug('Reporting ALL logs to a ticket is currently not supported.')
+      sys.exit(OK)
+#      data = LogProject.collate(LogProject.all(), include_all=False)
+#      res  = Report(data, when, p.largest_scale, include_all=False, show_header=False).post(p.ticket, p.comment, noop=p.NOOP)
+#      sys.exit(res)
+    case Namespace(action='report', project=nameorid, since=None, ticket=ticket) if not db.has('cache:recorded', Project.make(nameorid).id):
+      raise Exception(f'Unable to determine the time frame for when to report the details of {p.project!r}')
+    case Namespace(action='report', project=nameorid, since=None, ticket=ticket):
       when = db.get('cache:recorded', project.id)
-
-      res = report.post(p.ticket, ' '.join(p.comment).strip(), noop=p.NOOP)
+      data = LogProject.collate(LogProject.all_matching_since(nameorid, when))
+      res  = Report(data, when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
       sys.exit(res)
-    case Namespace(action='report', project=nameorid, since=None, ticket=ticket, comment=str(comment)):
-      project = Project.make(nameorid)
-      if not db.has('cache:recorded', project.id):
-        raise Exception(f'Unable to determine the time frame for when to report the details of {p.project!r}')
-
-      when = db.get('cache:recorded', project.id)
-
-      res = report.post(ticket, comment, noop=p.NOOP)
+    case Namespace(action='report', project=nameorid, since=when, ticket=ticket):
+      data = LogProject.collate(LogProject.all_matching_since(nameorid, when))
+      res = Report(data, when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
       sys.exit(res)
     case Namespace(action='report', project=project, since=None, ticket=None, mailto=None):
-      data = LogProject.collate(LogProject.find_matching(project), p.include_all)
+      data = LogProject.collate(LogProject.all_matching(project), p.include_all)
       last = Project.make('last')
       if last == project and last.is_running():
         data[last] += int(now().timestamp()-last.when.timestamp())
       report = Report(data, when, p.largest_scale, p.include_all, not p.no_header)
       report.print(p.format)
     case Namespace(action='report', project=project, since=since, ticket=None, mailto=None):
-      data = LogProject.collate(LogProject.find_matching_since(project, since), p.include_all)
+      data = LogProject.collate(LogProject.all_matching_since(project, since), p.include_all)
       last = Project.make('last')
       if last == project and last.is_running():
         data[last] += int(now().timestamp()-last.when.timestamp())
       report = Report(data, when, p.largest_scale, p.include_all, not p.no_header)
       report.print(p.format)
     case Namespace(action='report', project=None, since=since, ticket=None, mailto=None):
-      data = LogProject.collate(LogProject.find_since(project, since), p.include_all)
+      data = LogProject.collate(LogProject.all_since(project, since), p.include_all)
       last = Project.make('last')
       if last in data and last.is_running():
         data[last] += int(now().timestamp()-last.when.timestamp())
@@ -194,38 +168,6 @@ def main() -> None:
 #
 #        f = getattr(list(projects)[num-1], p.action)
 #      f(p.at)
-#    case 'report':
-#
-#      if p.since:
-#        when = p.since
-#  #    elif p.between:
-#  #      when = p.between
-#  #    elif p.ticket and p.project and not p.since:
-#  #      project = Project.make(p.project)
-#  #      if db.has('cache:recorded', project.id):
-#  #        when = db.get('cache:recorded', project.id)
-#  #      else:
-#  #        raise Exception(f'Unable to determine the time frame for when to report the details of {p.project!r}')
-#      else:
-#        when = None
-#
-#      data = LogProject.report(p.project, when)
-#      report = Report(data, when, p.largest_scale, p.include_all, not p.no_header)
-#      if p.ticket:
-#        if isinstance(p.comment, list):
-#          _comment = ' '.join(p.comment).strip()
-#        else:
-#          _comment = p.comment
-#
-#        res = report.post(p.ticket, _comment, noop=p.NOOP)
-#        sys.exit(res)
-#      elif p.mailto:
-#        res = report.mail(p)
-#        sys.exit(res)
-#      else:
-#        report.print(p.format)
-#    case 'edit':
-#
 
 if __name__ == '__main__':
   main()

@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 import re, io
 from typing import *
 
-def isuuid(s:str):
+def isuuid(s:str) -> bool:
   if isinstance(s, UUID): return True
   elif isinstance(s, str): return re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', s)
   elif isinstance(s, (tuple, list)) and len(s) == 1: return isuuid(s[0])
@@ -197,9 +197,9 @@ def parse_args() -> argparse.Namespace:
   rm.add_argument('project', nargs='+', metavar='NAME|UUID', help='Project name or uuid.')
 
   edit = sub.add_parser('edit', help='Change the recorded time of a log entry.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  edit.add_argument('at', type=_datetime, metavar='LAST|TIMESTAMP_ID|DATETIME',         help='The original log entry time to change.')
+  edit.add_argument('at', type=_datetime, metavar='LAST|TIMESTAMP_ID|DATETIME',     help='The original log entry time to change.')
   edit.add_argument('-s', '--state',   type=str, choices=('started', 'stopped'),    help='Change the log entry to this state.')
-  edit.add_argument('-p', '--project', type=str,                                   help='Change the log entry to this project.')
+  edit.add_argument('-p', '--project', type=str,                                    help='Change the log entry to this project.')
   edit.add_argument('-t', '--to',      type=_datetime,      metavar='DATETIME',     help='The updated time to set.')
   edit.add_argument('-r', '--reason',  type=str, nargs='+', metavar='REASON',       help='Reason for the change in time.')
 
@@ -216,7 +216,7 @@ def parse_args() -> argparse.Namespace:
   shol.add_argument('-t', '--timestamp',     action='store_true',                            default=False, help='Show the timestamp also.')
 
   shid = showsub.add_parser('id', help='Show the project name from the provided id.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  shid.add_argument('project', type=UUID, metavar='UUID')
+  shid.add_argument('UUID', nargs='+', type=UUID, help='UUID(s) to display the project names of.')
 
   rep = sub.add_parser('report', help='Report the results of work done', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   rep.add_argument('-l', '--largest_scale', type=str,       choices='w,d,h,m,s'.split(','),                                    default='h',                            help='The largest component of time to display: w => Weeks; d => Days; h => Hours; m => Minutes; s => Seconds.')
@@ -241,14 +241,17 @@ def parse_args() -> argparse.Namespace:
   hlpsub = hlp.add_subparsers(dest='kind', title='subcommands', required=False)
   hld = hlpsub.add_parser('dates', help='Display and explain the avilable date formats that can be used by the program.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-  p.set_defaults(project=[], display=None, kind=None, action='help')
+  p.set_defaults(project=[], display=None, kind=None, comment=None, action='help')
 
   r = p.parse_args()
-  if r.project is not None and isinstance(r.project, list) and len(r.project) > 0:
+  if r.project is not None and isinstance(r.project, list) and len(r.project) > 0 and all(isinstance(p, str) for p in r.project):
     r.project = ' '.join(r.project).strip().replace('\n', ' ')
 
   if not isinstance(r.project, UUID) and isuuid(r.project):
     r.project = UUID(r.project)
+
+  if isinstance(r.comment, list):
+    r.comment = ' '.join(r.comment).strip()
   debug(r)
 
   return (p, show, edit, rep, r)

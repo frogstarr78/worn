@@ -131,12 +131,11 @@ class Project(object):
         project = Project(uuid4(), nameorid)
         project.add()
         return project
-      case Project(id=nameorid) | Project(name=nameorid):
+      case Project(id=UUID(nameorid)) | Project(name=nameorid):
         return nameorid
       case _:
         debug(msg := f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
         raise Exception(msg)
-
 
   @classmethod
   def nearest_project_by_name(kind, name:str) -> set[str]:
@@ -177,7 +176,7 @@ class Project(object):
 
   @classmethod
   def all(kind) -> list:
-    return [Project.make(UUID(pid)) for pid, project in sorted(db.get('projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid)]
+    return (Project.make(UUID(pid)) for pid, project in sorted(db.get('projects').items(), key=lambda kv: kv[1].casefold()) if isuuid(pid))
 
   @classmethod
   def cache(kind, ticket:str | int, project) -> None:
@@ -285,6 +284,14 @@ class LogProject(Project):
 
   @classmethod
   def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
+    logs = LogProject.all_since(starting, count=2)
+
+    if len(logs) > 1:
+      if logs[0].when == logs[1].when:
+        pass
+      elif logs[1].when < to:
+        raise Exception(f"The first log entry {logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{p.to:%F %T}'.\nThis is unacceptable. Failing.")
+
     version_id = uuid4()
     new_key = f'logs-{str(version_id)}'
     db.add('versions', {new_key: reason})
@@ -297,3 +304,26 @@ class LogProject(Project):
       else:
         _log = LogProject(log.id, log.name, log.state, log.when)
         _log.log(log.state, log.when)
+
+  @classmethod
+  def edit_last_log_name(kind, new_name:str) -> None:
+    last = Project.make('last')
+    project = LogProject.all_since(at, count=1)[0]
+    if project != last or project.when != last.when:
+      debug(f'Unable to change no-last project state')
+      sys.exit(ERR)
+
+    project.remove()
+
+    LogProject(project.id, new_name, project.state, project.when).add()
+
+  @classmethod
+  def edit_last_log_state(kind, new_state:str) -> None:
+    last = Project.make('last')
+    project = LogProject.all_since(at, count=1)[0]
+    if project != last or project.when != last.when:
+      debug(f'Unable to change no-last project state')
+      sys.exit(ERR)
+    project.remove()
+
+    LogProject(project.id, project.name, new_state, project.when).add()
