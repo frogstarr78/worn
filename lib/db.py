@@ -1,7 +1,7 @@
-from . import *
 import redis
+from typing import Any
 
-def xrange(key:str, start:str=None, end:str=None, count:int | None=None, reverse:bool=False) -> list:
+def xrange(key:str, start:str=None, end:str=None, count:int=None, reverse:bool=False) -> list:
   _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if reverse:

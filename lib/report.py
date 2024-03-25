@@ -1,3 +1,4 @@
+from argparse import Namespace
 from . import *
 from .colors import colors
 from .project import Project, LogProject
@@ -10,7 +11,7 @@ class Report(object):
     self.include_all = include_all
     self.show_header = show_header
 
-  def mail(self, args:argparse.Namespace) -> None:
+  def mail(self, args:Namespace) -> None:
     if args.NOOP:
       print(f'{self:{args.format}}')
     else:

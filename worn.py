@@ -1,10 +1,10 @@
 #!bin/python3
 
 import sys
-from lib import parse_args, debug
+from lib import debug, db
 from lib.project import Project, LogProject
 from lib.report import Report
-from lib import db
+from lib.args import parse_args
 from argparse import Namespace
 
 OK = 0
