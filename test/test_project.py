@@ -116,7 +116,7 @@ class TestProject(TestWornBase):
   def test_start(self): pass
   def test_rename(self):
     with self.assertRaises(Exception):
-      proj.rename('not a project')
+      Project(self.random_uuid, 'Hooliganism').rename('not a project')
 
     _uuid = self.random_uuid
     proj = Project(_uuid, 'Chicken Nuggets')
