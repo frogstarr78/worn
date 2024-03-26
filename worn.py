@@ -88,18 +88,10 @@ def main() -> None:
     case Namespace(action='edit'):
       earg.print_help()
     case Namespace(action='report', project=None, since=None, ticket=None, mailto=None):
-      data = LogProject.collate(LogProject.all(), p.include_all)
-      last = Project.make('last')
-      if last in data and last.is_running():
-        data[last] += int(now().timestamp()-last.when.timestamp())
-      report = Report(data, last.when, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      report = Report(LogProject.all(), last.when, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
     case Namespace(action='report', project=None, since=since, ticket=None, mailto=None):
-      data = LogProject.collate(LogProject.all_since(since), p.include_all)
-      last = Project.make('last')
-      if last in data and last.is_running():
-        data[last] += int(now().timestamp()-last.when.timestamp())
-      report = Report(data, since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      report = Report(LogProject.all_since(since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
     case Namespace(action='report', project=None, since=None, ticket=ticket, mailto=None):
       debug('Reporting ALL logs to a ticket is currently not supported.')
@@ -108,29 +100,19 @@ def main() -> None:
       res = report.mail(to, p.noop)
       sys.exit(res)
     case Namespace(action='report', project=project, since=None, ticket=None, mailto=None):
-      data = LogProject.collate(LogProject.all_matching(project), p.include_all)
-      last = Project.make('last')
-      if last == project and last.is_running():
-        data[last] += int(now().timestamp()-last.when.timestamp())
-      report = Report(data, None, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      report = Report(LogProject.all_matching(project), None, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
     case Namespace(action='report', project=project, since=since, ticket=None, mailto=None):
-      data = LogProject.collate(LogProject.all_matching_since(project, since), p.include_all)
-      last = Project.make('last')
-      if last == project and last.is_running():
-        data[last] += int(now().timestamp()-last.when.timestamp())
-      report = Report(data, since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      report = Report(LogProject.all_matching_since(project, since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
     case Namespace(action='report', project=nameorid, since=None, ticket=ticket) if not db.has('cache:recorded', Project.make(nameorid).id):
       raise Exception(f'Unable to determine the time frame for when to report the details of {nameorid!r}')
     case Namespace(action='report', project=nameorid, since=None, ticket=ticket):
       when = db.get('cache:recorded', project.id)
-      data = LogProject.collate(LogProject.all_matching(nameorid))
-      res  = Report(data, when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
+      res  = Report(LogProject.all_matching(nameorid), when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
       sys.exit(res)
     case Namespace(action='report', project=nameorid, since=since, ticket=ticket):
-      data = LogProject.collate(LogProject.all_matching_since(nameorid, since))
-      res = Report(data, since, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
+      res = Report(LogProject.all_matching_since(nameorid, since), since, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
       sys.exit(res)
     case Namespace(action='report'):
       rarg.print_help()

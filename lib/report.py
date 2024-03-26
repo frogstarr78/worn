@@ -10,11 +10,38 @@ class Report(object):
     if scale not in Report.SCALES:
       raise Exception(f'Invalid scale specified {scale!r}.')
 
-    self.data = sorted(data.items(), key=lambda pnt: pnt[0].name.casefold())
+    self._last = Project.make('last')
     self.at = at
     self.scale = scale
     self.include_all = include_all
     self.show_header = show_header
+
+    self._data = self._collate(data)
+
+    if self._last is not None and self._last in self._data and self._last.is_running():
+      self._data[self._last] += int(now().timestamp()-self._last.when.timestamp())
+
+    if self.include_all:
+      for project in Project.all():
+        self._data.setdefault(project, 0)
+
+  def _collate(self, logs) -> dict[Project, float]:
+    stats = {}
+    accum = 0
+
+    for log, time in logs.items():
+      stats.setdefault(log, 0)
+      if log.is_running():
+        accum = log.when.timestamp()
+      elif accum > 0:
+        stats[log] += log.when.timestamp()-accum
+        accum = 0
+
+    return stats
+
+  @property
+  def _sorted_data(self):
+    return sorted(self._data.items(), key=lambda pnt: pnt[0].name.casefold())
 
   def mail(self, to:str, noop:bool=False) -> None:
     body = f'{self:{args.format}}'
@@ -30,14 +57,15 @@ class Report(object):
       import requests
 
     r = set([])
-    for project, time in self.data:
+    for project, time in self._sorted_data:
       Project.cache(ticket, project)
+      _duration = float(time)/MINUTE
       _comment = comment.format(project=project)
       if noop:
-        debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={ticket}&time_spent={float(time)/MINUTE}&body="{_comment}"')
+        debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={ticket}&time_spent={_duration}&body="{_comment}"')
         r.add(False)
       else:
-        resp = requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=ticket, time_spent=float(time)/MINUTE, body=_comment))
+        resp = requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=ticket, time_spent=_duration, body=_comment))
         r.add(resp.status_code < 400)
     return all(isinstance(_, bool) and _ for _ in r) and 0 or 1
 
@@ -72,9 +100,9 @@ class Report(object):
     else:
       r = ''
 
-    all_total = sum(v for (p, v) in self.data)
+    all_total = sum(self._data.values())
     t = ''
-    for project, total in self.data:
+    for project, total in self._sorted_data:
       if total == 0 and not self.include_all:
         continue
 
@@ -97,7 +125,7 @@ class Report(object):
         r += f' total {int(total): >8}'
 
       r += f' id {project:id} project {project:name!r}'
-      r += project.is_last() and Project.make('last').is_running() and f' ...{colors.bg.blue}and counting{colors.reset}' or ''
+      r += project.is_last() and self._last.is_running() and f' ...{colors.bg.blue}and counting{colors.reset}' or ''
       r += "\n"
     if len(t) > 0:
         r += f'{t}                                                                 Total\n'
@@ -118,7 +146,7 @@ class Report(object):
     r += isinstance(self.at, datetime) and ',since' or ''
     r += "\n"
 
-    for project, total in self.data:
+    for project, total in self._sorted_data:
       if total == 0 and not self.include_all:
         continue
 
@@ -129,7 +157,7 @@ class Report(object):
         r += ','
 
       r += f'{int(total)},{project:id},"{project:name}",'
-      r += (last := Project.make('last')).is_running() and last == project and 'true' or 'false'
+      r += self._last.is_running() and self._last.equiv(project) and 'true' or 'false'
 
       r += isinstance(self.at, datetime) and f',{self.at.strftime("%a %F %T")}' or ''
       r += "\n"
@@ -146,9 +174,9 @@ class Report(object):
     else:
       r = ''
 
-    all_total = sum(v for (p, v) in self.data)
+    all_total = sum(self._data.values())
     t = ''
-    for project, total in self.data:
+    for project, total in self._sorted_data:
       if total == 0 and not self.include_all:
         continue
 

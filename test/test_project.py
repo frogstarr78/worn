@@ -334,7 +334,7 @@ class TestProject(TestWornBase):
 #      self.assertIsInstance(Project.make([]), FauxProject)
 #      self.assertTrue(mock_debug.assert_called_once_with('Project [] was empty.'))
 
-  def test_make_fail(self):
+  def test_make_fails(self):
     '''case _:'''
     with self.assertRaises(Exception):
       Project.make(123)
@@ -350,6 +350,7 @@ class TestProject(TestWornBase):
     with patch('lib.db.get', side_effect={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
       all_projects = Project.all()
       self.assertIsInstance(all_projects, typing.Generator)
+      self.fail("Fix me!")
 
 #      _projects = list(all_projects)
 #      self.assertEqual(len(all_projects), 1)
@@ -374,6 +375,9 @@ class TestProject(TestWornBase):
       self.assertEqual(mock_add.call_count, 2)
       self.assertEqual(mock_add.mock_calls[0].args, ('cache:tickets', {_uuid: 123}))
       self.assertEqual(mock_add.mock_calls[1].args, ('cache:recorded', {_uuid: self.known_date}))
+
+  def test_collate(self):
+    self.fail("Implement me")
 
 class TestFauxProject(TestWornBase):
   def test_init(self):

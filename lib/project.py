@@ -264,25 +264,6 @@ class LogProject(Project):
     return (Project.make(project, when=tid) for (tid, project) in db.xrange(key, start='-', count=count))
 
   @classmethod
-  def collate(kind, logs:list, add_last:bool=False, without_time:bool=False) -> dict[Project, float]:
-    stats = {}
-    accum = 0
-
-    if without_time:
-      for project in Project.all():
-        stats.setdefault(project, 0)
-
-    for log in logs:
-      stats.setdefault(log, 0)
-      if log.is_running():
-        accum = log.when.timestamp()
-      elif accum > 0:
-        stats[log] += log.when.timestamp()-accum
-        accum = 0
-
-    return stats
-
-  @classmethod
   def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
     logs = LogProject.all_since(starting, count=2)
 

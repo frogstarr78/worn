@@ -10,7 +10,7 @@ class TestProject(FauxProject):
 class TestReport(TestWornBase):
     def test_init(self):
       r = Report({})
-      self.assertEqual([], r.data)
+      self.assertEqual({}, r._data)
       self.assertIsNone(r.at)
       self.assertEqual('h', r.scale)
       self.assertFalse(r.include_all)
@@ -20,8 +20,7 @@ class TestReport(TestWornBase):
       p2 = TestProject('cBa')
       p3 = TestProject('BCa')
       r = Report({p2: 1.1, p: 5, p3: 3}, self.known_date, 'w', include_all=True, show_header=False)
-      self.assertEqual(3, len(r.data))
-#      self.assertListEqual([(p, 5), (p3, 3), (p2, 1.1)], r.data)
+      self.assertDictEqual({p2: 1.1, p: 5, p3: 3}, r._data)
       self.assertEqual(self.known_date, r.at)
       self.assertEqual('w', r.scale)
       self.assertTrue(r.include_all)
