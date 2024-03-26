@@ -95,6 +95,7 @@ def explain_dates():
                              examples: "2024-03-14"'''
     print(msg)
 
+SECOND = 1
 MINUTE = 60
 HOUR   = MINUTE*60
 DAY    = HOUR*24

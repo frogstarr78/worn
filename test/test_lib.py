@@ -54,6 +54,7 @@ class TestLib(TestWornBase):
 
   def test_constants(self):
     import lib
+    self.assertEqual(lib.SECOND, 1)
     self.assertEqual(lib.MINUTE, 60)
     self.assertEqual(lib.HOUR, 3600)
     self.assertEqual(lib.DAY, 86400)

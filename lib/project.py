@@ -35,23 +35,17 @@ class Project(object):
     return hash(self.id)
 
   def __str__(self):
-    return f'<Project hash:{hash(self)} id:{self.id!r} name:{db.get("projects", self.id)!r} state:{self.state!r} when:{self.when.strftime("%a %F %T")!r}>'
+    return f'<Project hash:{hash(self)} id:{self.id!r} name:{db.get("projects", self.id)!r} state:"{self.is_running() and colors.fg.green or colors.fg.orange}{self.state}{colors.reset}" when:{self.when.strftime("%a %F %T")!r}>'
 
   def __format__(self, fmt_spec:Any) -> str:
-    if 'id' in fmt_spec:
-      return f'{self.id}'
-    elif 'name' in fmt_spec:
-      return f'{self.name}'
-    elif 'plain' in fmt_spec:
-      return f'{self.name.casefold()}'
-    else:
-      return super().__format__(fmt_spec)
-
-  def log_format(self):
-    r  = f'{parse_timestamp(self.when).isoformat(" ", timespec="seconds")} '
-    r += f'state {self.is_running() and colors.fg.green or colors.fg.orange}{self.state!r}{colors.reset} '
-    r += f'id {self.id} project {self.name!r}'
-    return r
+    match fmt_spec:
+      case 'id':     return str(self.id)
+      case 'name!r': return repr(self.name)
+      case 'name':   return self.name
+      case 'last':   return f'Last project: {str(self).strip("<>")}'
+      case 'plain':  return self.name.casefold()
+      case 'log':    return f'{parse_timestamp(self.when).isoformat(" ", timespec="seconds")} state "{self.is_running() and colors.fg.green or colors.fg.orange}{self.state}{colors.reset}" id {self.id} project {self.name!r}'
+      case _:        return super().__format__(fmt_spec)
 
   def is_running(self):
     return self.state == 'started'
@@ -213,11 +207,10 @@ class LogProject(Project):
 #    return int(self.timestamp_id.replace('-', ''))
     return hash(self.id)
 #
-  def log_format(self, with_timestamp=False):
-    if with_timestamp:
-      return '{0: >13}-{1} {2}'.format(str(self.when.timestamp()).replace(".", ""), self.serial, super().log_format())
-    else:
-      return super().log_format()
+  def __format__(self, fmt_spec:Any):
+    match fmt_spec:
+      case 'log!t': return f'{str(self.when.timestamp()).replace(".", ""): >13}-{self.serial} {parse_timestamp(self.when).isoformat(" ", timespec="seconds")} state "{self.is_running() and colors.fg.green or colors.fg.orange}{self.state}{colors.reset}" id {self.id} project {self.name!r}'
+      case _:       return super().__format__(fmt_spec)
 
   def add(self) -> None:
     _ts = str(self.when.timestamp()).replace('.', '')[:13]
@@ -227,7 +220,7 @@ class LogProject(Project):
     db.rm('logs', self.timestamp_id)
 
   @classmethod
-  def all_matching_since(kind, matching:str, since:datetime, count:int=None, _version:str | UUID=None) -> list:
+  def all_matching_since(kind, matching:str, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:
     if isinstance(since, str) and istimestamp_id(since):
       start = since.strip()
     else:
@@ -241,7 +234,7 @@ class LogProject(Project):
     return (_project for (tid, project) in db.xrange(key, start=start, count=count) if (_project := Project.make(project, when=tid)).equiv(matching))
 
   @classmethod
-  def all_since(kind, since:datetime, count:int=None, _version:str | UUID=None) -> list:
+  def all_since(kind, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:
     if isinstance(since, str) and istimestamp_id(since):
       start = since.strip()
     else:
@@ -255,7 +248,7 @@ class LogProject(Project):
     return (Project.make(project, when=tid) for (tid, project) in db.xrange(key, start=start, count=count))
 
   @classmethod
-  def all_matching(kind, matching:str, count:int=None, _version:str | UUID=None) -> list:
+  def all_matching(kind, matching:str, count:int=None, _version:str | UUID=None) -> Generator:
     key = 'logs'
     if _version is not None:
       key = f'logs-{str(_version)}'
@@ -263,7 +256,7 @@ class LogProject(Project):
     return (_project for (tid, project) in db.xrange(key, start='-', count=count) if (_project := Project.make(project, when=tid)).equiv(matching))
 
   @classmethod
-  def all(kind, count:int=None, _version:str | UUID=None) -> list:
+  def all(kind, count:int=None, _version:str | UUID=None) -> Generator:
     key = 'logs'
     if _version is not None:
       key = f'logs-{str(_version)}'

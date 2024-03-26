@@ -42,9 +42,8 @@ def main() -> None:
       explain_dates()
     case Namespace(action='help'):
       parg.print_help()
-    case Namespace(action='show', display='last'):
-      last = Project.make('last')
-      print('Last project: {last.name!r}; state: {colour}{last.state!r}{rst}; at: {last.when}, id: {last.id}.'.format(last=last, colour=last.is_running() and colors.fg.green or colors.fg.orange, rst=colors.reset))
+    case Namespace(action='show', display='last') | Namespace(action='stat'):
+      print(f'{Project.make("last"):last}')
     case Namespace(action='show', display='id'):
       print(Project.make(p.project))
     case Namespace(action='show', display='projects'):
@@ -53,9 +52,26 @@ def main() -> None:
         if project.is_last() and Project.make('last').is_running():
           fmt += f' ({colors.underline}{colors.bg.blue}currently running{colors.reset})'
         print(fmt)
-    case Namespace(action='show', display='logs'):
-      for log in LogProject.find_matching_since(p.project, p.since):
-        print(log.log_format(p.timestamp))
+    case Namespace(action='show', display='logs', project=None, since=None):
+      fmt = 'log'
+      if p.timestamp: fmt = 'log!t'
+      for log in LogProject.all():
+        print(f'{log:{fmt}}'.format(log))
+    case Namespace(action='show', display='logs', project=project, since=None):
+      fmt = 'log'
+      if p.timestamp: fmt = 'log!t'
+      for log in LogProject.all_matching(project):
+        print(f'{log:{fmt}}'.format(log))
+    case Namespace(action='show', display='logs', project=None, since=since):
+      fmt = 'log'
+      if p.timestamp: fmt = 'log!t'
+      for log in LogProject.all_since(since):
+        print(f'{log:{fmt}}'.format(log))
+    case Namespace(action='show', display='logs', project=project, since=since):
+      fmt = 'log'
+      if p.timestamp: fmt = 'log!t'
+      for log in LogProject.all_matching_since(project, since):
+        print(f'{log:{fmt}}'.format(log))
     case Namespace(action='show'):
       sharg.print_help()
     case Namespace(action='edit', to=to, reason=None):
@@ -71,53 +87,50 @@ def main() -> None:
       LogProject.edit_last_log_name(new_name)
     case Namespace(action='edit'):
       earg.print_help()
-    case Namespace(action='report', project=None, since=None, ticket=ticket):
+    case Namespace(action='report', project=None, since=None, ticket=None, mailto=None):
+      data = LogProject.collate(LogProject.all(), p.include_all)
+      last = Project.make('last')
+      if last in data and last.is_running():
+        data[last] += int(now().timestamp()-last.when.timestamp())
+      report = Report(data, last.when, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      print(f'{report:{p.format}}')
+    case Namespace(action='report', project=None, since=since, ticket=None, mailto=None):
+      data = LogProject.collate(LogProject.all_since(since), p.include_all)
+      last = Project.make('last')
+      if last in data and last.is_running():
+        data[last] += int(now().timestamp()-last.when.timestamp())
+      report = Report(data, since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      print(f'{report:{p.format}}')
+    case Namespace(action='report', project=None, since=None, ticket=ticket, mailto=None):
       debug('Reporting ALL logs to a ticket is currently not supported.')
       sys.exit(OK)
-#      data = LogProject.collate(LogProject.all(), include_all=False)
-#      res  = Report(data, when, p.largest_scale, include_all=False, show_header=False).post(p.ticket, p.comment, noop=p.NOOP)
-#      sys.exit(res)
-    case Namespace(action='report', project=nameorid, since=None, ticket=ticket) if not db.has('cache:recorded', Project.make(nameorid).id):
-      raise Exception(f'Unable to determine the time frame for when to report the details of {p.project!r}')
-    case Namespace(action='report', project=nameorid, since=None, ticket=ticket):
-      when = db.get('cache:recorded', project.id)
-      data = LogProject.collate(LogProject.all_matching_since(nameorid, when))
-      res  = Report(data, when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
-      sys.exit(res)
-    case Namespace(action='report', project=nameorid, since=when, ticket=ticket):
-      data = LogProject.collate(LogProject.all_matching_since(nameorid, when))
-      res = Report(data, when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
+    case Namespace(action='report', project=None, since=None, ticket=None, mailto=to):
+      res = report.mail(to, p.noop)
       sys.exit(res)
     case Namespace(action='report', project=project, since=None, ticket=None, mailto=None):
       data = LogProject.collate(LogProject.all_matching(project), p.include_all)
       last = Project.make('last')
       if last == project and last.is_running():
         data[last] += int(now().timestamp()-last.when.timestamp())
-      report = Report(data, when, p.largest_scale, p.include_all, not p.no_header)
-      report.print(p.format)
+      report = Report(data, None, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      print(f'{report:{p.format}}')
     case Namespace(action='report', project=project, since=since, ticket=None, mailto=None):
       data = LogProject.collate(LogProject.all_matching_since(project, since), p.include_all)
       last = Project.make('last')
       if last == project and last.is_running():
         data[last] += int(now().timestamp()-last.when.timestamp())
-      report = Report(data, when, p.largest_scale, p.include_all, not p.no_header)
-      report.print(p.format)
-    case Namespace(action='report', project=None, since=since, ticket=None, mailto=None):
-      data = LogProject.collate(LogProject.all_since(project, since), p.include_all)
-      last = Project.make('last')
-      if last in data and last.is_running():
-        data[last] += int(now().timestamp()-last.when.timestamp())
-      report = Report(data, when, p.largest_scale, p.include_all, not p.no_header)
-      report.print(p.format)
-    case Namespace(action='report', project=None, since=None, ticket=None, mailto=None):
-      data = LogProject.collate(LogProject.all(), p.include_all)
-      last = Project.make('last')
-      if last in data and last.is_running():
-        data[last] += int(now().timestamp()-last.when.timestamp())
-      report = Report(data, when, p.largest_scale, p.include_all, not p.no_header)
-      report.print(p.format)
-    case Namespace(action='report', ticket=None, mailto=mailto):
-      res = report.mail(p)
+      report = Report(data, since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      print(f'{report:{p.format}}')
+    case Namespace(action='report', project=nameorid, since=None, ticket=ticket) if not db.has('cache:recorded', Project.make(nameorid).id):
+      raise Exception(f'Unable to determine the time frame for when to report the details of {nameorid!r}')
+    case Namespace(action='report', project=nameorid, since=None, ticket=ticket):
+      when = db.get('cache:recorded', project.id)
+      data = LogProject.collate(LogProject.all_matching(nameorid))
+      res  = Report(data, when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
+      sys.exit(res)
+    case Namespace(action='report', project=nameorid, since=since, ticket=ticket):
+      data = LogProject.collate(LogProject.all_matching_since(nameorid, since))
+      res = Report(data, since, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
       sys.exit(res)
     case Namespace(action='report'):
       rarg.print_help()

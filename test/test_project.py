@@ -1,6 +1,10 @@
 from test import *
+from lib.project import Project, FauxProject, LogProject
 
 class TestProject(TestWornBase):
+  def setUp(self):
+    super().setUp()
+    self.worn_project = Project(self.valid_uuid, 'Worn', 'stopped', datetime(2024, 3, 23, 23, 4, 13))
 
   def test_init(self):
     _uuid = self.random_uuid
@@ -52,11 +56,13 @@ class TestProject(TestWornBase):
     self.assertEqual(hash(_uuid), hash(Project(_uuid, 'What?')))
 
   def test_str(self):
+    from lib.colors import colors
     with patch('lib.db.get', return_value='Worn') as mock_db:
-      result = f'''<Project hash:{hash(self.worn_project)} id:UUID('244019c2-6d8f-4b09-96c1-b60a91ecb3a5') name:'Worn' state:'stopped' when:'Sat 2024-03-23 23:04:13'>'''
+      result = f'''<Project hash:{hash(self.worn_project)} id:UUID('244019c2-6d8f-4b09-96c1-b60a91ecb3a5') name:'Worn' state:"{colors.fg.orange}stopped{colors.reset}" when:'Sat 2024-03-23 23:04:13'>'''
       self.assertEqual(str(self.worn_project), result)
-#      self.assertTrue(mock_db.assert_called_with('projects', self.valid_uuid))
       self.assertTrue(mock_db.called)
+      self.assertEqual(mock_db.call_count, 1)
+      self.assertEqual(mock_db.call_args.args, ('projects', UUID('244019c2-6d8f-4b09-96c1-b60a91ecb3a5')))
 
   def test_format(self):
     self.assertEqual(f'{self.worn_project:id}', str(self.worn_project.id))
@@ -64,15 +70,14 @@ class TestProject(TestWornBase):
     self.assertEqual(f'{self.worn_project:plain}', self.worn_project.name.casefold())
     self.assertEqual(f'{self.worn_project.name: ^6}', " Worn ")
 
-  def test_log_format(self):
     from lib.colors import colors
     _uuid = self.random_uuid
     project = Project(_uuid, 'What are you doing right now?', 'started', self.known_date)
-    self.assertEqual(project.log_format(), f"2024-03-23 21:50:00 state {colors.fg.green}'started'{colors.reset} id {_uuid} project 'What are you doing right now?'")
+    self.assertEqual(f'{project:log}', f"""2024-03-23 21:50:00 state "{colors.fg.green}started{colors.reset}" id {_uuid} project 'What are you doing right now?'""")
 
     _uuid = self.random_uuid
     project = Project(_uuid, 'Are you there?', 'stopped', self.known_date)
-    self.assertEqual(project.log_format(), f"2024-03-23 21:50:00 state {colors.fg.orange}'stopped'{colors.reset} id {_uuid} project 'Are you there?'")
+    self.assertEqual(f'{project:log}', f"""2024-03-23 21:50:00 state "{colors.fg.orange}stopped{colors.reset}" id {_uuid} project 'Are you there?'""")
 
   def test_is_running(self):
     self.assertFalse(self.worn_project.is_running())
@@ -93,7 +98,21 @@ class TestProject(TestWornBase):
 
   def test_add(self): pass
   def test_log(self): pass
-  def test_stop(self): pass
+  def test_stop(self):
+    proj = LogProject(self.random_uuid, 'Mud Larker', 'stopped', self._timestamp_id(self.known_date))
+    with patch.object(proj, 'log') as mock_log:
+      proj.stop(self.known_date)
+      self.assertFalse(proj.is_running())
+      self.assertFalse(mock_log.called)
+      self.assertEqual(mock_log.call_count, 0)
+
+      proj.state = 'started'
+      proj.stop(self.known_date)
+      self.assertTrue(proj.is_running())
+      self.assertTrue(mock_log.called)
+      self.assertEqual(mock_log.call_count, 1)
+      self.assertEqual(mock_log.call_args.args, ('stopped', self.known_date))
+
   def test_start(self): pass
   def test_rename(self):
     with self.assertRaises(Exception):
@@ -137,7 +156,6 @@ class TestProject(TestWornBase):
           self.assertEqual(mock_rm.mock_calls[0].args, ('logs', _ts))
           self.assertEqual(mock_rm.mock_calls[1].args, ('projects', 'peanut butter'))
           self.assertEqual(mock_rm.mock_calls[2].args, ('projects', _uuid))
-
 
   def test_make_from_dictionary(self):
     '''case {'project': nameorid as _uuid, 'state': state} if isuuid(_uuid):'''
@@ -322,11 +340,11 @@ class TestProject(TestWornBase):
       Project.make(123)
 
   def test_nearest_project_by_name(self):
-    self.fail("Impleent me")
+    self.fail("Implement me")
 
   def test_all(self):
     _uuid = self.random_uuid
-    self.fail("Impleent me")
+    self.fail("Implement me")
 
 #    with patch('lib.db.get', return_value={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
     with patch('lib.db.get', side_effect={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
@@ -413,5 +431,16 @@ class TestLogProject(TestWornBase):
       self.assertEqual(mock_rm.call_count, 1)
       self.assertEqual(mock_rm.call_args.args, ('logs', self._timestamp_id(self.known_date)))
   
+  def test_log_format(self):
+    self.fail("Implement me")
+    from lib.colors import colors
+    _uuid = self.random_uuid
+    project = Project(_uuid, 'What are you doing right now?', 'started', self.known_date)
+    self.assertEqual(f'{project:log}', f"2024-03-23 21:50:00 state {colors.fg.green}'started'{colors.reset} id {_uuid} project 'What are you doing right now?'")
+
+    _uuid = self.random_uuid
+    project = Project(_uuid, 'Are you there?', 'stopped', self.known_date)
+    self.assertEqual(f'{project:log}', f"2024-03-23 21:50:00 state {colors.fg.orange}'stopped'{colors.reset} id {_uuid} project 'Are you there?'")
+
 if __name__ == '__main__':
   unittest.main(buffer=True)

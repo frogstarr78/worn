@@ -15,13 +15,10 @@ MY_DIR = os.path.dirname(ME)
 sys.path.append(os.path.join(MY_DIR, '..', 'lib'))
 
 #from lib import *
-from lib.project import Project, FauxProject, LogProject
-
 
 class TestWornBase(unittest.TestCase):
     def setUp(self):
       self.valid_uuid = UUID('244019c2-6d8f-4b09-96c1-b60a91ecb3a5')
-      self.worn_project = Project(self.valid_uuid, 'Worn', 'stopped', datetime(2024, 3, 23, 23, 4, 13))
       self.known_date = datetime(2024, 3, 23, 21, 50, 00)
 
     def tearDown(self): pass

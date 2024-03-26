@@ -1,8 +1,8 @@
 import argparse
-from lib import debug, isuuid
+from lib import debug, isuuid, istimestamp_id, now
 from lib.project import Project
 from uuid import UUID
-from . import datetime, now
+from datetime import datetime, timedelta
 
 def email(s):
   if '@' not in s:
