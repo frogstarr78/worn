@@ -161,8 +161,8 @@ class TestReport(TestWornBase):
 
     def test_how_long(self):
       when = now()
-      p1   = LogProject(self.random_uuid, 'Han-Kengai Beech', 'started', (when - timedelta(seconds=92)))
-      p2   = LogProject(p1.id,            p1.name,            'stopped', (when - timedelta(seconds=33)))
-      with patch.object(Project, 'make', return_value=last) as mock_make:
-        with patch.object(Project, 'all') as mock_all:
-          r = 
+      p1   = LogProject(self.random_uuid, 'Han-Kengai Beech', 'started', (when - timedelta(seconds=152)))
+      p2   = LogProject(p1.id,            p1.name,            'stopped', (when - timedelta(seconds=38)))
+      with patch.multiple(Project, make=DEFAULT, all=DEFAULT) as whose_line:
+        r = Report([p1, p2], scale='m')
+        self.assertEqual((1.0, 54), r._how_long(114))

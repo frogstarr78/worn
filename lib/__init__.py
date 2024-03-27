@@ -96,7 +96,7 @@ def explain_dates():
     print(msg)
 
 SECOND = 1
-MINUTE = 60
+MINUTE = SECOND*60
 HOUR   = MINUTE*60
 DAY    = HOUR*24
 WEEK   = DAY*7
