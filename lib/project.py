@@ -6,7 +6,7 @@ from typing import Generator
 class Project(object):
   __match_args__ = ("id","name")
 
-  def __init__(self, _id:UUID, name:str, state:str='stopped', when:datetime=now()):
+  def __init__(self, _id:UUID, name:str, /, state:str='stopped', when:datetime=now()):
     if isuuid(_id) and isuuid(name):
       raise Exception(f'Attempting to set the project id {self.id!r} to a uuid bad project name {self.name!r}!')
 

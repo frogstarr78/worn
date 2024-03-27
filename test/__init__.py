@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, MagicMock, patch, PropertyMock
+from unittest.mock import Mock, MagicMock, patch, PropertyMock, DEFAULT
 from argparse import Namespace
 import sys
 from datetime import datetime, timedelta

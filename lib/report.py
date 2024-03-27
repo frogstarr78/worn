@@ -6,7 +6,7 @@ from .project import Project, LogProject
 class Report(object):
   SCALES = {'w': WEEK, 'd': DAY, 'h': HOUR, 'm': MINUTE, 's': SECOND}
 
-  def __init__(self, data:dict[Project, float], at:datetime=None, scale:str='h', *, include_all:bool=False, show_header:bool=True):
+  def __init__(self, data:Generator, at:datetime=None, scale:str='h', *, include_all:bool=False, show_header:bool=True):
     if scale not in Report.SCALES:
       raise Exception(f'Invalid scale specified {scale!r}.')
 
@@ -25,19 +25,19 @@ class Report(object):
       for project in Project.all():
         self._data.setdefault(project, 0)
 
-  def _collate(self, logs) -> dict[Project, float]:
-    stats = {}
+  def _collate(self, logs:Generator) -> dict[Project, float]:
+    data = {}
     accum = 0
 
-    for log, time in logs.items():
-      stats.setdefault(log, 0)
+    for log in logs:
+      data.setdefault(log, 0)
       if log.is_running():
         accum = log.when.timestamp()
       elif accum > 0:
-        stats[log] += log.when.timestamp()-accum
+        data[log] += log.when.timestamp()-accum
         accum = 0
 
-    return stats
+    return data
 
   @property
   def _sorted_data(self):
@@ -58,16 +58,16 @@ class Report(object):
 
     r = set([])
     for project, time in self._sorted_data:
-      Project.cache(ticket, project)
       _duration = float(time)/MINUTE
       _comment = comment.format(project=project)
       if noop:
         debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={ticket}&time_spent={_duration}&body="{_comment}"')
-        r.add(False)
+        r.add(True)
       else:
+        Project.cache(ticket, project)
         resp = requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=ticket, time_spent=_duration, body=_comment))
         r.add(resp.status_code < 400)
-    return all(isinstance(_, bool) and _ for _ in r) and 0 or 1
+    return all(isinstance(_, bool) and _ for _ in r)
 
   def _how_long(self, ts:int) -> int:
     if self.scale == 'w':
