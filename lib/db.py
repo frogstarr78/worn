@@ -1,7 +1,7 @@
 import redis
 from typing import Any
 
-def xrange(key:str, /, start:str=None, end:str=None, *, count:int=None, reverse:bool=False) -> list:
+def xrange(key:str, *, start:str=None, end:str=None, count:int=None, reverse:bool=False) -> list:
   _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if reverse:
@@ -9,14 +9,16 @@ def xrange(key:str, /, start:str=None, end:str=None, *, count:int=None, reverse:
     else:
       return conn.xrange(   _key, start or '-', end or '+', count=count)
 
-def xinfo(key:str, hkey:str | None=None, default:Any=None, kind:str='stream') -> dict | str:
+def xinfo(key:str, hkey:str=None, *, default:Any=None, kind:str='stream') -> dict | str:
   _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    info = conn.xinfo_stream(_key)
-    if hkey is None:
-      return info
+    if kind == 'stream':
+      info = conn.xinfo_stream(_key)
     else:
-      return info.get(str(hkey), default)
+      raise Exception(f'Unkown kind {kind}.')
+
+    if hkey is None: return info
+    else:            return info.get(str(hkey), default)
 
 def has(key:str, hkey:str=None) -> bool:
   _key = str(key)
@@ -34,10 +36,9 @@ def get(key:str, hkey:Any=None) -> str | dict:
   _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if hkey is None:
-      if conn.type(_key) == 'hash':
-        return conn.hgetall(_key)
-      else:
-        return conn.get(_key)
+      match conn.type(_key):
+        case 'hash': return conn.hgetall(_key)
+        case _:      return conn.get(_key)
     else:
       return conn.hget(_key, str(hkey))
 
@@ -46,19 +47,20 @@ def rename(key:str, newkey:str) -> None:
     conn.rename(str(key), str(newkey))
     save()
 
-def rm(key:str, sub:int | str | None=None) -> None:
+def rm(key:str, sub:int | str=None) -> None:
   _key = str(key)
 
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if sub is None:
       conn.delete(_key)
-    elif conn.type(_key) == 'hash':
-      conn.hdel(_key, str(sub))
-    elif conn.type(_key) == 'stream':
-      conn.xdel(key, str(sub))
+    else:
+      match conn.type(_key):
+        case 'hash': conn.hdel(_key, str(sub))
+        case 'stream': conn.xdel(key, str(sub))
+        case kind: raise Exception('Unhandled database kind {kind}.')
     save()
 
-def add(key:str, val:str | int | dict=None, expire:int | None=None, nx:bool=False) -> None:
+def add(key:str, val:str | int | dict=None, *, expire:int=None, nx:bool=False) -> None:
   if isinstance(val, dict):
     _val = dict([(str(_k), str(_v)) for _k, _v in val.items()])
 

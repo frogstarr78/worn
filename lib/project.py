@@ -70,7 +70,7 @@ class Project(object):
 
   def start(self, at:datetime=now()) -> None:
     if db.has('logs'):
-      oldest_log = parse_timestamp(db.xinfo('logs', 'last-generated-id', now()))
+      oldest_log = parse_timestamp(db.xinfo('logs', 'last-generated-id', default=now()))
       if at < oldest_log:
         raise Exception(f'The start time that you specified "{at:%F %T}" is older than the last log entered. Please, choose a different time or adjust the previously entered log entry time "{oldest_log:%F %T}".')
 
