@@ -69,7 +69,7 @@ class Report(object):
         r.add(resp.status_code < 400)
     return all(isinstance(_, bool) and _ for _ in r)
 
-  def _how_long(self, ts:int) -> int:
+  def _how_long(self, ts:int) -> tuple[int | float]:
     if self.scale == 'w':
       return (
         int(ts/WEEK),
@@ -90,7 +90,7 @@ class Report(object):
       return ( int(ts/HOUR), int(ts%HOUR/MINUTE), int(ts%MINUTE) )
 
     elif self.scale == 'm':
-      return ( int(ts/MINUTE), int(ts%MINUTE))
+      return ( int(ts/MINUTE), int(ts%MINUTE) )
 
   def _simple_format(self) -> str:
     if self.show_header:

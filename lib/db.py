@@ -1,7 +1,7 @@
 import redis
 from typing import Any
 
-def xrange(key:str, start:str=None, end:str=None, count:int=None, reverse:bool=False) -> list:
+def xrange(key:str, /, start:str=None, end:str=None, *, count:int=None, reverse:bool=False) -> list:
   _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if reverse:
@@ -80,7 +80,7 @@ def add(key:str, val:str | int | dict=None, expire:int | None=None, nx:bool=Fals
 
     save()
 
-def save(bg=False) -> None:
+def save(*, bg:bool=False) -> None:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
     if bg:
       conn.bgsave()
