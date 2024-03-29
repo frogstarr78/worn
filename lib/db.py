@@ -12,11 +12,9 @@ def xrange(key:str, *, start:str=None, end:str=None, count:int=None, reverse:boo
 def xinfo(key:str, hkey:str=None, *, default:Any=None, kind:str='stream') -> dict | str:
   _key = str(key)
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    if kind == 'stream':
-      info = conn.xinfo_stream(_key)
-    else:
-      raise Exception(f'Unkown kind {kind}.')
+    if kind != 'stream': raise Exception(f'Unkown kind {kind}.')
 
+    info = conn.xinfo_stream(_key)
     if hkey is None: return info
     else:            return info.get(str(hkey), default)
 
@@ -39,8 +37,7 @@ def get(key:str, hkey:Any=None) -> str | dict:
       match conn.type(_key):
         case 'hash': return conn.hgetall(_key)
         case _:      return conn.get(_key)
-    else:
-      return conn.hget(_key, str(hkey))
+    else:            return conn.hget(_key, str(hkey))
 
 def rename(key:str, newkey:str) -> None:
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
@@ -67,18 +64,14 @@ def add(key:str, val:str | int | dict=None, *, expire:int=None, nx:bool=False) -
   _key = str(key)
 
   with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    if (_type := conn.type(_key)) == 'hash':
-      if nx:
+    match conn.type(_key):
+      case 'hash' if nx:
         for _k, _v in _val.items():
           conn.hsetnx(_key, _k, _v)
-      else:
-        conn.hset(_key, mapping=_val)
-    elif _type == 'stream':
-      conn.xadd(_key, _val, id=val.pop('id', '*'))
-    elif isinstance(val, dict):
-      conn.hset(_key, mapping=_val)
-    else:
-      conn.set(_key, str(val), nx=nx, ex=expire)
+      case 'hash':   conn.hset(_key, mapping=_val)
+      case 'stream': conn.xadd(_key, _val, id=_val.pop('id', '*'))
+      case 'string': conn.set(_key, str(val), nx=nx, ex=expire)
+      case kind:     raise Exception(f'Unable to set/add value for unhandled key kind {kind}.')
 
     save()
 

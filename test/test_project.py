@@ -342,29 +342,28 @@ class TestProject(TestWornBase):
   def test_nearest_project_by_name(self): pass
 
   def test_all(self): pass
-#  def test_all(self):
-#    _uuid = self.random_uuid
-#    self.fail("Implement me")
-#
-##    with patch('lib.db.get', return_value={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
+  def test_all(self):
+    _uuid = self.random_uuid
+
+#    with patch('lib.db.get', return_value={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
 #    with patch('lib.db.get', side_effect={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
-#      all_projects = Project.all()
-#      self.assertIsInstance(all_projects, typing.Generator)
-#      self.fail("Fix me!")
-#
-##      _projects = list(all_projects)
-##      self.assertEqual(len(all_projects), 1)
-##
-##      self.assertTrue(mock_get.called)
-##      self.assertEqual(mock_get.call_count, 1)
-##      self.assertEqual(mock_get.call_args.args, ('projects',))
-##
-##      first_project = all_projects[0]
-##      self.assertIsInstance(first_project, Project)
-##      self.assertEqual(first_project.id, _uuid)
-##      self.assertEqual(first_project.name, 'This and that')
-##      self.assertEqual(first_project.state, 'stopped')
-##      self.assertIsInstance(first_project.when, datetime)
+    with patch('lib.db.get', return_value={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
+      with patch('lib.project.Project.make', return_value=Project(_uuid, 'This and that')) as mock_project:
+        all_projects = Project.all()
+
+        self.assertEqual(mock_get.call_count, 1)
+        self.assertEqual(mock_get.call_args.args, ('projects',))
+
+        all_projects = list(all_projects)
+        self.assertEqual(len(all_projects), 1)
+        self.assertEqual(all_projects[0], Project(_uuid, 'This and that'))
+
+#      first_project = all_projects[0]
+#      self.assertIsInstance(first_project, Project)
+#      self.assertEqual(first_project.id, _uuid)
+#      self.assertEqual(first_project.name, 'This and that')
+#      self.assertEqual(first_project.state, 'stopped')
+#      self.assertIsInstance(first_project.when, datetime)
 
 
   def test_cache(self):
