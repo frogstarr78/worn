@@ -30,27 +30,40 @@ def parse_timestamp(tsin):
     return parse_timestamp(' '.join(tsin))
   elif isinstance(tsin, str):
     if '-' in tsin:
-      if len(time_parts := tsin.split('-')) == 2:
-        tsin = time_parts[0]
+      '''Do we have something that looks like a redis stream id or date?'''
+
+      if tsin.count('-') == 1:
+        '''This is intended to extract the timestamp out of a redis stream id'''
+        return parse_timestamp(tsin[:tsin.index('-')])
       else:
         try:
           return datetime.strptime(tsin, '%Y-%m-%d %H:%M:%S')
         except:
           return datetime.strptime(tsin, '%a %Y-%m-%d %H:%M:%S')
 
-    if len(tsin) >= 13:
-      if '.' in tsin[:13]:
-        return datetime.fromtimestamp(float(tsin[:13]))
+#    if tsin.isdigit() and tsin.count('.') == 0 and 9 < len(tsin) <= 13:
+#        return datetime.fromtimestamp(float(tsin))
+
+    elif tsin.count('.') > 1:
+      raise Exception('Invalid timestamp {tsin!r} supplied.')
+
+    elif len(tsin) >= 13:
+      if '.' in tsin[:11]:
+        '''Possible truncation happening here'''
+        ts, mils = tsin.split('.')
+        if ts.isdigit() and mils.isdigit():
+#          return datetime.fromtimestamp(float('.'.join([ts[:10], f'{mils[:13-len(ts)]:0>6}'])))
+          return parse_timestamp(float('.'.join([ts[:10], mils])))
+        else:
+          raise Exception(f'Invalid timestamp {tsin!r} supplied.')
       else:
-        return datetime.fromtimestamp(float('.'.join([tsin[:10], tsin[10:13]])))
-    elif len(tsin) > 10:
-      _tsin = f'{tsin:0<13}'
-      return datetime.fromtimestamp(float('.'.join([_tsin[:10], _tsin[10:13]])))
+        return parse_timestamp(float('.'.join([tsin[:10], f'{tsin[10:]:>06}'])))
+    elif 10 <= len(tsin) < 13:
+      return parse_timestamp(float('.'.join([tsin[:10], f'{tsin[10:]:>06}'])))
     else:
       raise Exception(f'Invalid timestamp {tsin!r} supplied.')
   else:
     raise Exception(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
-
 
 def explain_dates():
     msg = '''The system should know how to parse these custom pseudo-values and formats.
@@ -93,7 +106,7 @@ def explain_dates():
 
   %Y-%m-%d                     Date value
                              examples: "2024-03-14"'''
-    print(msg)
+    return msg
 
 SECOND = 1.0
 MINUTE = SECOND*60

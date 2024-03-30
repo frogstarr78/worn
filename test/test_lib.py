@@ -53,12 +53,86 @@ class TestLib(TestWornBase):
       self.assertEqual('''this\nand\nthat\n''', mock_debug.getvalue())
 
   def test_constants(self):
-    import lib
-    self.assertEqual(lib.SECOND, 1)
-    self.assertEqual(lib.MINUTE, 60)
-    self.assertEqual(lib.HOUR, 3600)
-    self.assertEqual(lib.DAY, 86400)
-    self.assertEqual(lib.WEEK, 604800)
+    from lib import SECOND, MINUTE, HOUR, DAY, WEEK
+    self.assertEqual(1,      SECOND)
+    self.assertEqual(60,     MINUTE)
+    self.assertEqual(3600,   HOUR)
+    self.assertEqual(86400,  DAY)
+    self.assertEqual(604800, WEEK)
+
+
+  def test_parse_timestamp(self):
+    from lib import parse_timestamp
+
+    ts = parse_timestamp(1711729682)
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 29, 9, 28, 2), ts)
+
+    ts = parse_timestamp(1711729682.1234)
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 29, 9, 28, 2, 123400), ts)
+
+    ts = datetime.now()
+    self.assertEqual(ts, parse_timestamp(ts))
+
+    ts = parse_timestamp(['2024-03-29', '9:33:13'])
+    self.assertEqual(ts, ts)
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 29, 9, 33, 13), ts)
+
+    ts = parse_timestamp(['2024-03-29 12:33:13'])
+    self.assertEqual(ts, ts)
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 29, 12, 33, 13), ts)
+
+    ts = parse_timestamp('Fri 2024-03-29 21:33:13')
+    self.assertEqual(ts, ts)
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 29, 21, 33, 13), ts)
+
+    ts = parse_timestamp('1711729682')
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 29, 9, 28, 2), ts)
+
+    ts = parse_timestamp('17117296821234')
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 29, 9, 28, 2, 1234), ts)
+
+    ts = parse_timestamp('1711729682.1234')
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 29, 9, 28, 2, 123400), ts)
+
+    ts = parse_timestamp('1711154701553-1')
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 22, 17, 45, 1, 553), ts)
+
+    with self.assertRaises(Exception):
+      parse_timestamp('abcdefghij.k')
+
+    with self.assertRaises(Exception):
+      parse_timestamp('1234567890.k')
+
+    with self.assertRaises(Exception):
+      parse_timestamp('abcdefghij.12')
+
+    with self.assertRaises(Exception):
+      parse_timestamp('1711729682.1234.1')
+
+    with self.assertRaises(Exception):
+      parse_timestamp('123')
+
+    with self.assertRaises(Exception):
+      parse_timestamp(range(0, 4))
+
+
+  def test_explain_dates(self):
+    from lib import explain_dates
+    self.assertGreater(len(explain_dates()), 0)
+    self.assertIn('now', explain_dates())
+    self.assertIn('yesterday', explain_dates())
+    self.assertIn('redis stream timestamp', explain_dates())
+    self.assertIn('examples: "10:31", "22:22", etc', explain_dates())
+    self.assertIn('examples: "2024-03-14"', explain_dates())
 
 if __name__ == '__main__':
   unittest.main(buffer=True)

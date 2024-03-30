@@ -195,7 +195,7 @@ class TestProject(TestWornBase):
         self.assertEqual(proj.id, _uuid)
         self.assertEqual(proj.name, 'Who dis')
         self.assertEqual(proj.state, 'started')
-        self.assertEqual(proj.when, datetime.fromtimestamp(when))
+        self.assertEqual(proj.when, datetime.fromtimestamp(1711313926.000480))
 
   def test_make_using_an_uuid(self):
     '''

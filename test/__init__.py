@@ -14,8 +14,6 @@ MY_DIR = os.path.dirname(ME)
 
 sys.path.append(os.path.join(MY_DIR, '..', 'lib'))
 
-#from lib import *
-
 class TestWornBase(unittest.TestCase):
     def setUp(self):
       self.valid_uuid = UUID('244019c2-6d8f-4b09-96c1-b60a91ecb3a5')

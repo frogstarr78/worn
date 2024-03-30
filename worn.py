@@ -36,7 +36,7 @@ def main() -> None:
       Project.make(p.project).remove()
     case Namespace(action='help', kind='dates'):
       from lib import explain_dates
-      explain_dates()
+      print(explain_dates())
     case Namespace(action='show', display='dates'):
       from lib import explain_dates
       explain_dates()
