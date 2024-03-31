@@ -98,7 +98,8 @@ class TestProject(TestWornBase):
 
   def test_add(self): pass
   def test_log(self): pass
-  def test_stop(self):
+
+  def test_stop_project(self):
     proj = LogProject(uuid4(), 'Mud Larker', 'stopped', self._timestamp_id(self.known_date))
     with patch.object(proj, 'log') as mock_log:
       proj.stop(self.known_date)
@@ -113,7 +114,16 @@ class TestProject(TestWornBase):
       self.assertEqual(mock_log.call_count, 1)
       self.assertEqual(mock_log.call_args.args, ('stopped', self.known_date))
 
-  def test_start(self): pass
+  def test_start_project(self):
+    p = Project(uuid4(), 'Testing')
+    with self.assertRaises(Exception):
+      with patch('lib.db.has', return_value=True) as dbh:
+        with patch('lib.db.xinfo', return_value=now() + timedelta(minutes=1)) as dbx:
+          with patch('lib.db.add', return_value=now() + timedelta(minutes=1)) as dba:
+            p.start(now())
+            self.assertFalse(dba.call_args.called)
+
+
   def test_rename(self):
     with self.assertRaises(Exception):
       Project(uuid4(), 'Hooliganism').rename('not a project')
@@ -334,10 +344,33 @@ class TestProject(TestWornBase):
 
   def test_make_fails(self):
     '''case _:'''
-    with self.assertRaises(Exception):
-      Project.make(123)
+    with patch('builtins.print') as mock_debug:
+      with self.assertRaises(Exception):
+        Project.make(123)
 
-  def test_nearest_project_by_name(self): pass
+  def test_nearest_project_by_name(self):
+    f = Project(uuid4(), 'Fake it!')
+    with patch('builtins.print') as mock_debug:
+      with patch.object(Project, 'make', return_value=f) as fake_proj:
+        r = Project.nearest_project_by_name('last')
+        self.assertTrue(mock_debug.called)
+        self.assertEqual(r, f)
+
+    with patch('builtins.print') as mock_debug:
+      with patch('lib.db.has', return_value=True) as dbh:
+        with patch.object(Project, 'make', return_value=f) as fake_proj:
+          r = Project.nearest_project_by_name(str(f.id))
+          self.assertTrue(mock_debug.called)
+          self.assertTrue(fake_proj.called)
+          self.assertEqual(r, f)
+
+    with patch('builtins.print') as mock_debug:
+      with patch('lib.db.has', return_value=True) as dbh:
+        with patch.object(Project, 'make', return_value=f) as fake_proj:
+          r = Project.nearest_project_by_name('the name of a project that exists')
+          self.assertTrue(mock_debug.called)
+          self.assertTrue(fake_proj.called)
+          self.assertEqual(r, f)
 
   def test_all(self): pass
   def test_all(self):

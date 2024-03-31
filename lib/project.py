@@ -1,6 +1,6 @@
 from . import *
-from .colors import colors
 from . import db
+from .colors import colors
 from typing import Generator
 
 class Project(object):
@@ -133,33 +133,31 @@ class Project(object):
   def nearest_project_by_name(kind, name:str) -> set[str]:
     matches = set([])
     counts = [0, 0]
-    if name == 'last':
-      matches.add(Project.make('last'))
+    if name == 'last' or db.has('projects', name) or db.has('projects', name.strip().casefold()):
       counts = [1, 1]
-    elif db.has('projects', name):
-      matches.add(Project.make(name))
-      counts = [1, 1]
-    elif db.has('projects', name.strip().casefold()):
-      matches.add(Project.make(name.strip().casefold()))
-      counts = [1, 1]
-    else:
-      for label in db.keys('projects'):
-        counts[0] += 1
-        if len(label) < len(name):
-          continue
-        elif label == name or label.casefold() == name.casefold():
-          matches.add(label)
-          break
-        else:
-          matched = True
-          for i in range(len(name)):
-            counts[1] += 1
-            if name[i].casefold() != label[i].casefold():
-              matched = False
-              continue
+      debug(f'counts {counts!r}')
+      if isinstance(name, str) and not isuuid(name):
+        return Project.make(name.strip().casefold())
+      else:
+        return Project.make(name)
 
-          if matched:
-            matches.add(label)
+    for label in db.keys('projects'):
+      counts[0] += 1
+      if len(label) < len(name):
+        continue
+      elif label == name or label.casefold() == name.casefold():
+        matches.add(label)
+        break
+      else:
+        matched = True
+        for i in range(len(name)):
+          counts[1] += 1
+          if name[i].casefold() != label[i].casefold():
+            matched = False
+            continue
+
+        if matched:
+          matches.add(label)
     debug(f'counts {counts!r}')
     if len(matches) > 0:
       return sorted([Project.make(match) for match in matches], key=lambda p: p.name.casefold())
