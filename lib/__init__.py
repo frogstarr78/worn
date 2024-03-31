@@ -7,10 +7,11 @@ import re, io
 from typing import *
 
 def debug(*msgs) -> None:
-  for _ in msgs:
-    print(_, file=sys.stderr)
+  for m in msgs:
+    print(m, file=sys.stderr)
 
-now = datetime.now
+def now():
+  return datetime.now()
 
 def isuuid(s:str) -> bool:
   if isinstance(s, UUID): return True
@@ -41,9 +42,6 @@ def parse_timestamp(tsin):
         except:
           return datetime.strptime(tsin, '%a %Y-%m-%d %H:%M:%S')
 
-#    if tsin.isdigit() and tsin.count('.') == 0 and 9 < len(tsin) <= 13:
-#        return datetime.fromtimestamp(float(tsin))
-
     elif tsin.count('.') > 1:
       raise Exception('Invalid timestamp {tsin!r} supplied.')
 
@@ -52,7 +50,6 @@ def parse_timestamp(tsin):
         '''Possible truncation happening here'''
         ts, mils = tsin.split('.')
         if ts.isdigit() and mils.isdigit():
-#          return datetime.fromtimestamp(float('.'.join([ts[:10], f'{mils[:13-len(ts)]:0>6}'])))
           return parse_timestamp(float('.'.join([ts[:10], mils])))
         else:
           raise Exception(f'Invalid timestamp {tsin!r} supplied.')

@@ -12,7 +12,7 @@ class TestLib(TestWornBase):
 
       self.assertEqual(neone['xrevrange'].call_count, 0)
 
-      _uuid = self.random_uuid
+      _uuid = uuid4()
       db.xrange(_uuid)
       self.assertEqual(neone['xrange'].call_count, 2)
       self.assertEqual(neone['xrange'].call_args.args, (str(_uuid), '-', '+'))

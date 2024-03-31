@@ -1,7 +1,9 @@
+import lib
+import sys
+from uuid import uuid4, UUID
+from lib import debug, isuuid, istimestamp_id, parse_timestamp, SECOND, MINUTE, HOUR, DAY, WEEK
 import argparse
-from lib import debug, isuuid, istimestamp_id, now
 from lib.project import Project
-from uuid import UUID
 from datetime import datetime, timedelta
 
 def email(s):
@@ -16,7 +18,7 @@ def email(s):
 
   return str(s)
 
-def _datetime(dtin:str) -> datetime:
+def _datetime(dtin:str | datetime) -> datetime:
   weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
   abbrev_weekdays = [day[:3] for day in weekdays]
   if not isinstance(dtin, (datetime, str)):
@@ -33,31 +35,33 @@ def _datetime(dtin:str) -> datetime:
     return project.Project.make('last').when
   elif dtin == 'now':
     '''"parse" a "now"'''
-    return now()
+    return lib.now()
   elif dtin == 'today':
     '''"parse" a "today"'''
-    return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S')
+    return datetime.strptime(f'{lib.now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S')
   elif dtin == 'yesterday':
     '''"parse" a "yesterday"'''
-    return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=1)
+    return datetime.strptime(f'{lib.now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=1)
   elif dtin.endswith('days ago'):
     '''"parse" a "yesterday"'''
     num_days = int(dtin.split(' ')[0])
-    return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=num_days)
+    return datetime.strptime(f'{lib.now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=num_days)
   elif dtin in weekdays:
     '''"parse" a weekday'''
-    current_dow = now().weekday()
+    _now = lib.now()
+    current_dow = _now.weekday()
     if current_dow <= weekdays.index(dtin.casefold()):
-      return now() - timedelta(days=7 - (weekdays.index(dtin.casefold()) - current_dow))
+      return _now - timedelta(days=7 - (weekdays.index(dtin.casefold()) - current_dow))
     else:
-      return now() - timedelta(days=current_dow - weekdays.index(dtin.casefold()))
+      return _now - timedelta(days=current_dow - weekdays.index(dtin.casefold()))
   elif dtin in abbrev_weekdays:
     '''"parse" a weekday abbreviation'''
-    current_dow = now().weekday()
+    _now = lib.now()
+    current_dow = _now.weekday()
     if current_dow <= abbrev_weekdays.index(dtin.casefold()):
-      return now() - timedelta(days=7 - (abbrev_weekdays.index(dtin.casefold()) - current_dow))
+      return _now - timedelta(days=7 - (abbrev_weekdays.index(dtin.casefold()) - current_dow))
     else:
-      return now() - timedelta(days=current_dow - abbrev_weekdays.index(dtin.casefold()))
+      return _now - timedelta(days=current_dow - abbrev_weekdays.index(dtin.casefold()))
   elif dtin.count(' ') > 0:
     '''parse a datetime'''
     if dtin.count(' ') > 2 or dtin.count(':') not in (1, 2):
@@ -75,14 +79,14 @@ def _datetime(dtin:str) -> datetime:
       raise Exception(f'Unknown datetime format for input value {dtin!r}.')
 
     if num_sep == 1:
-      return datetime.strptime(f'{now():%F} {dtin}', '%Y-%m-%d %H:%M')
+      return datetime.strptime(f'{lib.now():%F} {dtin}', '%Y-%m-%d %H:%M')
     elif num_sep == 2:
-      return datetime.strptime(f'{now():%F} {dtin}', '%Y-%m-%d %H:%M:%S')
+      return datetime.strptime(f'{lib.now():%F} {dtin}', '%Y-%m-%d %H:%M:%S')
   else:
     '''parse a date'''
     return datetime.strptime(dtin, '%Y-%m-%d')
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv=sys.argv) -> argparse.Namespace:
   from .colors import colors
   p = argparse.ArgumentParser(description=f'{colors.underline}W{colors.reset}orking {colors.underline}o{colors.reset}n {colors.underline}R{colors.reset}ight {colors.underline}N{colors.reset}ow', formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
 
@@ -152,7 +156,7 @@ def parse_args() -> argparse.Namespace:
 
   p.set_defaults(project=[], display=None, kind=None, comment=None, action='help')
 
-  r = p.parse_args()
+  r = p.parse_args(argv)
   if r.project is not None and isinstance(r.project, list) and len(r.project) > 0 and all(isinstance(p, str) for p in r.project):
     r.project = ' '.join(r.project).strip().replace('\n', ' ')
 

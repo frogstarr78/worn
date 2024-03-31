@@ -24,16 +24,16 @@ class TestReport(TestWornBase):
         Report([], scale='y')
 
       when = now()
-      p1 = LogProject(self.random_uuid, 'Abc', 'started', when - timedelta(seconds=66))
+      p1 = LogProject(uuid4(), 'Abc', 'started', when - timedelta(seconds=66))
       p2 = LogProject(p1.id,            'Abc', 'stopped', when)
 
-      p3 = LogProject(self.random_uuid, 'cBa', 'started', when - timedelta(seconds=72))
+      p3 = LogProject(uuid4(), 'cBa', 'started', when - timedelta(seconds=72))
       p4 = LogProject(p3.id,            'cBa', 'stopped', when)
 
-      p5 = LogProject(self.random_uuid, 'BCa', 'started', when - timedelta(minutes=3))
+      p5 = LogProject(uuid4(), 'BCa', 'started', when - timedelta(minutes=3))
       p6 = LogProject(p5.id,            'BCa', 'stopped', when)
 
-      p7 = Project(self.random_uuid, 'Rogue underniceness exemplified')
+      p7 = Project(uuid4(), 'Rogue underniceness exemplified')
 
       with patch.object(Project, 'make') as mock_make:
         with patch.object(Project, 'all', return_value=[p1, p3, p5, p7]) as mock_all:
@@ -54,7 +54,7 @@ class TestReport(TestWornBase):
           self.assertFalse(r.show_header)
 
       when = now()
-      p1   = LogProject(self.random_uuid, 'Han-Kengai Beech', 'started', (when - timedelta(seconds=92)))
+      p1   = LogProject(uuid4(), 'Han-Kengai Beech', 'started', (when - timedelta(seconds=92)))
       p2   = LogProject(p1.id,            p1.name,            'stopped', (when - timedelta(seconds=33)))
       last = Project(p1.id,               p1.name,            'started', (when - timedelta(seconds=10)))
       with patch.object(Project, 'make', return_value=last) as mock_make:
@@ -81,7 +81,7 @@ class TestReport(TestWornBase):
       when = now()
       with patch('sys.stderr', new_callable=StringIO) as mock_debug:
         with patch.multiple(Project, cache=DEFAULT, make=DEFAULT, all=DEFAULT) as whos_line:
-          p1  = LogProject(self.random_uuid, 'bob',   'started', when - timedelta(seconds=78))
+          p1  = LogProject(uuid4(), 'bob',   'started', when - timedelta(seconds=78))
           p2  = LogProject(p1.id,            p1.name, 'stopped', when)
           r   = Report([p1, p2])
           res = r.post(1, 'hello', noop=True)
@@ -98,7 +98,7 @@ class TestReport(TestWornBase):
       '''
       when = now()
       with patch.multiple(Project, cache=DEFAULT, make=DEFAULT, all=DEFAULT) as whos_line:
-        p1  = LogProject(self.random_uuid, 'Bob',   'started', when - timedelta(seconds=72))
+        p1  = LogProject(uuid4(), 'Bob',   'started', when - timedelta(seconds=72))
         p2  = LogProject(p1.id,            p1.name, when=when)
         r   = Report([p1, p2])
 
@@ -122,7 +122,7 @@ class TestReport(TestWornBase):
       '''
       when = now()
       with patch.multiple(Project, cache=DEFAULT, make=DEFAULT, all=DEFAULT) as whos_line:
-        p1  = LogProject(self.random_uuid, 'Joe',   'started', when - timedelta(seconds=72))
+        p1  = LogProject(uuid4(), 'Joe',   'started', when - timedelta(seconds=72))
         p2  = LogProject(p1.id,            p1.name, when=when)
         r   = Report([p1, p2])
 
@@ -163,13 +163,13 @@ class TestReport(TestWornBase):
     def test_how_long(self):
       when = now()
       with patch.multiple(Project, make=DEFAULT, all=DEFAULT) as whose_line:
-        p1   = LogProject(self.random_uuid, 'Han-Kengai Beech', 'started', (when - timedelta(seconds=152)))
+        p1   = LogProject(uuid4(), 'Han-Kengai Beech', 'started', (when - timedelta(seconds=152)))
         p2   = LogProject(p1.id,            p1.name,            'stopped', (when - timedelta(seconds=38)))
         r = Report([p1, p2], scale='m')
         self.assertEqual((1.0, 54), r._how_long(114))
 
       with patch.multiple(Project, make=DEFAULT, all=DEFAULT) as whose_line:
-        p1   = LogProject(self.random_uuid, 'Kengai Juniper', 'started', (when - timedelta(hours=2, minutes=3, seconds=34)))
+        p1   = LogProject(uuid4(), 'Kengai Juniper', 'started', (when - timedelta(hours=2, minutes=3, seconds=34)))
         p2   = LogProject(p1.id,            p1.name,          'stopped', when)
         r = Report([p1, p2], scale='h')
         self.assertEqual((2, 57, 26), r._how_long(7283))

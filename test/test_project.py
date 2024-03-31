@@ -7,7 +7,7 @@ class TestProject(TestWornBase):
     self.worn_project = Project(self.valid_uuid, 'Worn', 'stopped', datetime(2024, 3, 23, 23, 4, 13))
 
   def test_init(self):
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     proj = LogProject(_uuid, 'something', 'stopped', self.known_date)
     self.assertEqual(proj.id, _uuid)
     self.assertEqual(proj.name, 'something')
@@ -17,7 +17,7 @@ class TestProject(TestWornBase):
       Project(uuid4(), uuid4())
 
   def test_equiv(self):
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     p  = Project(_uuid, 'Test1', 'stopped', when=self.known_date)
     op = Project(_uuid, 'Test1', 'stopped', when=self.known_date + timedelta(hours=24))
 #    self.assertIs(p, op)
@@ -31,7 +31,7 @@ class TestProject(TestWornBase):
     self.assertTrue(p.equiv('Test1'))
     self.assertTrue(p.equiv('test1'))
 
-    _oid = self.random_uuid
+    _oid = uuid4()
     ooop = Project(_oid, 'Test2', 'stopped', when=self.known_date + timedelta(hours=24))
     self.assertIsNot(p, ooop)
     self.assertFalse(p.equiv(ooop))
@@ -52,7 +52,7 @@ class TestProject(TestWornBase):
     self.assertEqual(op - p, 86400)
 
   def test_hash(self):
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     self.assertEqual(hash(_uuid), hash(Project(_uuid, 'What?')))
 
   def test_str(self):
@@ -71,11 +71,11 @@ class TestProject(TestWornBase):
     self.assertEqual(f'{self.worn_project.name: ^6}', " Worn ")
 
     from lib.colors import colors
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     project = Project(_uuid, 'What are you doing right now?', 'started', self.known_date)
     self.assertEqual(f'{project:log}', f"""2024-03-23 21:50:00 state "{colors.fg.green}started{colors.reset}" id {_uuid} project 'What are you doing right now?'""")
 
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     project = Project(_uuid, 'Are you there?', 'stopped', self.known_date)
     self.assertEqual(f'{project:log}', f"""2024-03-23 21:50:00 state "{colors.fg.orange}stopped{colors.reset}" id {_uuid} project 'Are you there?'""")
 
@@ -85,12 +85,12 @@ class TestProject(TestWornBase):
     self.assertTrue(self.worn_project.is_running())
 
   def test_is_last(self):
-    me = Project(self.random_uuid, 'Central Park')
-    with patch('lib.db.xrange', return_value=[(self._timestamp_id(datetime.now()), {'project': str(self.random_uuid), 'state': 'started'})]) as mock_range:
+    me = Project(uuid4(), 'Central Park')
+    with patch('lib.db.xrange', return_value=[(self._timestamp_id(datetime.now()), {'project': str(uuid4()), 'state': 'started'})]) as mock_range:
       with patch('lib.db.get', return_value='Parlor') as mock_get:
         self.assertFalse(me.is_last())
 
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     me = Project(_uuid, 'Paperback')
     with patch('lib.db.xrange', return_value=[(self._timestamp_id(datetime.now()), {'project': str(_uuid), 'state': 'started'})]) as mock_range:
       with patch('lib.db.get', return_value='Paperback') as mock_get:
@@ -99,7 +99,7 @@ class TestProject(TestWornBase):
   def test_add(self): pass
   def test_log(self): pass
   def test_stop(self):
-    proj = LogProject(self.random_uuid, 'Mud Larker', 'stopped', self._timestamp_id(self.known_date))
+    proj = LogProject(uuid4(), 'Mud Larker', 'stopped', self._timestamp_id(self.known_date))
     with patch.object(proj, 'log') as mock_log:
       proj.stop(self.known_date)
       self.assertFalse(proj.is_running())
@@ -116,9 +116,9 @@ class TestProject(TestWornBase):
   def test_start(self): pass
   def test_rename(self):
     with self.assertRaises(Exception):
-      Project(self.random_uuid, 'Hooliganism').rename('not a project')
+      Project(uuid4(), 'Hooliganism').rename('not a project')
 
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     proj = Project(_uuid, 'Chicken Nuggets')
     with patch('lib.db.add') as mock_add:
       with patch('lib.db.rm') as mock_rm:
@@ -134,7 +134,7 @@ class TestProject(TestWornBase):
         self.assertEqual(mock_rm.call_args.args, ('projects', 'chicken nuggets'))
 
   def test_remove(self):
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     _ts   = self._timestamp_id(self.known_date, seq='9')
     proj  = Project(_uuid, 'Peanut Butter')
     with patch('lib.db.xrange', return_value=iter([(_ts, {'project': _uuid, 'state': 'started'})])) as mock_range:
@@ -178,7 +178,7 @@ class TestProject(TestWornBase):
       self.assertEqual(mock_db.call_args.kwargs, dict(count=1, reverse=True))
 
     when = 1711313926.48
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     with patch('lib.db.xrange', return_value=[(self._timestamp_id(when), {'project': str(_uuid), 'state': 'started'})]) as mock_range:
       with patch('lib.db.get', return_value='Who dis') as mock_get:
         proj = Project.make('last')
@@ -202,7 +202,7 @@ class TestProject(TestWornBase):
       case nameorid if isinstance(nameorid, UUID) and db.has('projects', nameorid):
       case str(nameorid) if isuuid(nameorid) and db.has('projects', nameorid):
     '''
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     with patch('lib.db.has', return_value=True) as mock_has:
       with patch('lib.db.get', return_value='Spiderman') as mock_get:
         proj = Project.make(str(_uuid))
@@ -219,7 +219,7 @@ class TestProject(TestWornBase):
         self.assertEqual(proj.name, 'Spiderman')
         self.assertEqual(proj.state, 'stopped')
 
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     with patch('lib.db.has', return_value=True) as mock_has:
       with patch('lib.db.get', return_value='Spiderman') as mock_get:
         proj = Project.make(_uuid)
@@ -238,7 +238,7 @@ class TestProject(TestWornBase):
 
   def test_make_from_using_timestamp_id(self):
     '''case str(nameorid) if istimestamp_id(nameorid) and len(db.xrange('logs', start=nameorid, count=1)) > 0:'''
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     with patch('lib.db.xrange', return_value=[(self._timestamp_id(self.known_date, seq='5'), {'project': _uuid, 'state': 'started'})]) as mock_range:
       with patch('lib.db.get', return_value='Synthetica') as mock_get:
         proj = Project.make(self._timestamp_id(self.known_date, seq='5'))
@@ -262,7 +262,7 @@ class TestProject(TestWornBase):
     '''case str(nameorid) if db.has('projects', nameorid.casefold().strip()):'''
     _name = "  I am doing something that I don't want anyone to know about, including myself, so I am making a very obscure description here instead."
     _clean_name = "i am doing something that i don't want anyone to know about, including myself, so i am making a very obscure description here instead."
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     with patch('lib.db.has', return_value=True) as mock_has:
       with patch('lib.db.get', side_effect=(str(_uuid), _name)) as mock_get:
         proj = Project.make(_name)
@@ -307,13 +307,13 @@ class TestProject(TestWornBase):
 
   def test_make_from_existing_project_instances(self):
     '''case Project(id=UUID(nameorid)) | Project(name=nameorid):'''
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     _proj = Project(_uuid, None)
     proj = Project.make(_proj)
 
     self.assertEqual(proj, _proj)
 
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     _proj = Project(None, 'Find me')
     proj = Project.make(_proj)
 
@@ -321,18 +321,16 @@ class TestProject(TestWornBase):
 
   def test_make_from_empty(self):
     '''case None | [] | tuple() | {} | set():'''
-    self.assertIsInstance(Project.make(tuple()), FauxProject)
-    self.assertIsInstance(Project.make(set([])), FauxProject)
-    self.assertIsInstance(Project.make(dict()), FauxProject)
-    self.assertIsInstance(Project.make(None), FauxProject)
-
     with patch('sys.stderr', new_callable=StringIO) as mock_write:
       self.assertIsInstance(Project.make([]), FauxProject)
       self.assertEqual(mock_write.getvalue(), 'Project [] was empty.\n')
 
-#    with patch('lib.debug') as mock_debug:
-#      self.assertIsInstance(Project.make([]), FauxProject)
-#      self.assertTrue(mock_debug.assert_called_once_with('Project [] was empty.'))
+    with patch('builtins.print') as mock_debug:
+      self.assertIsInstance(Project.make(tuple()), FauxProject)
+      self.assertIsInstance(Project.make(set([])), FauxProject)
+      self.assertIsInstance(Project.make(dict()), FauxProject)
+      self.assertIsInstance(Project.make(None), FauxProject)
+      self.assertEqual(mock_debug.call_count, 4)
 
   def test_make_fails(self):
     '''case _:'''
@@ -343,7 +341,7 @@ class TestProject(TestWornBase):
 
   def test_all(self): pass
   def test_all(self):
-    _uuid = self.random_uuid
+    _uuid = uuid4()
 
 #    with patch('lib.db.get', return_value={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
 #    with patch('lib.db.get', side_effect={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
@@ -368,7 +366,7 @@ class TestProject(TestWornBase):
 
   def test_cache(self):
     with patch('lib.db.add') as mock_add:
-      _uuid = self.random_uuid
+      _uuid = uuid4()
       Project.cache(123, Project(_uuid, "I'm a real boy!", when=self.known_date))
       self.assertTrue(mock_add.called)
       self.assertEqual(mock_add.call_count, 2)
@@ -394,9 +392,9 @@ class TestFauxProject(TestWornBase):
 class TestLogProject(TestWornBase):
   def test_init(self):
 #    with self.assertRaises(Exception):
-#      LogProject(self.random_uuid, 'Bad when value', 'stopped', str(self.now.timestamp()).replace('.',''))
+#      LogProject(uuid4(), 'Bad when value', 'stopped', str(self.now.timestamp()).replace('.',''))
 
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     tsid = f'''{str(self.known_date.timestamp()).replace('.', '')}'''
     log = LogProject(_uuid, 'IDK', 'started', tsid)
     self.assertEqual(log.id, _uuid)
@@ -406,7 +404,7 @@ class TestLogProject(TestWornBase):
     self.assertEqual(log.timestamp_id, tsid)
     self.assertEqual(log.serial, 0)
 
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     tsid = self._timestamp_id(self.known_date, 3)
     log = LogProject(_uuid, 'IDK', 'started', tsid)
     self.assertEqual(log.id, _uuid)
@@ -416,7 +414,7 @@ class TestLogProject(TestWornBase):
     self.assertEqual(log.timestamp_id, tsid)
     self.assertEqual(log.serial, 3)
 
-    _uuid = self.random_uuid
+    _uuid = uuid4()
     tsid = self._timestamp_id(self.known_date, '*')
     log = LogProject(_uuid, 'IDK', 'started', tsid)
     self.assertEqual(log.id, _uuid)
@@ -427,7 +425,7 @@ class TestLogProject(TestWornBase):
     self.assertEqual(log.serial, 0)
 
   def test_remove(self):
-    log = LogProject(self.random_uuid, 'A project', state='started', when=self._timestamp_id(self.known_date))
+    log = LogProject(uuid4(), 'A project', state='started', when=self._timestamp_id(self.known_date))
     with patch('lib.db.rm') as mock_rm:
       log.remove()
       self.assertTrue(mock_rm.called)
@@ -436,11 +434,11 @@ class TestLogProject(TestWornBase):
   
 #  def test_log_format(self):
 #    from lib.colors import colors
-#    _uuid = self.random_uuid
+#    _uuid = uuid4()
 #    project = Project(_uuid, 'What are you doing right now?', 'started', self.known_date)
 #    self.assertEqual(f'{project:log}', f"2024-03-23 21:50:00 state {colors.fg.green}'started'{colors.reset} id {_uuid} project 'What are you doing right now?'")
 #
-#    _uuid = self.random_uuid
+#    _uuid = uuid4()
 #    project = Project(_uuid, 'Are you there?', 'stopped', self.known_date)
 #    self.assertEqual(f'{project:log}', f"2024-03-23 21:50:00 state {colors.fg.orange}'stopped'{colors.reset} id {_uuid} project 'Are you there?'")
 

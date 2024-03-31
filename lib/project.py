@@ -122,7 +122,6 @@ class Project(object):
         return project
       case ( Project(id=_) | Project(name=_) ) as project:
         return project
-#      case None | [] | tuple() | set():
       case None | [] | tuple() | {} | set():
         debug(f"Project {nameorid!r} was empty.")
         return FauxProject()
