@@ -366,12 +366,13 @@ class TestProject(TestWornBase):
 
   def test_cache(self):
     with patch('lib.db.add') as mock_add:
-      _uuid = uuid4()
-      Project.cache(123, Project(_uuid, "I'm a real boy!", when=self.known_date))
-      self.assertTrue(mock_add.called)
-      self.assertEqual(mock_add.call_count, 2)
-      self.assertEqual(mock_add.mock_calls[0].args, ('cache:tickets', {_uuid: 123}))
-      self.assertEqual(mock_add.mock_calls[1].args, ('cache:recorded', {_uuid: self.known_date}))
+      with patch('builtins.print') as mock_debug:
+        _uuid = uuid4()
+        Project.cache(123, Project(_uuid, "I'm a real boy!", when=self.known_date))
+        self.assertTrue(mock_add.called)
+        self.assertEqual(mock_add.call_count, 2)
+        self.assertEqual(mock_add.mock_calls[0].args, ('cache:tickets', {_uuid: 123}))
+        self.assertEqual(mock_add.mock_calls[1].args, ('cache:recorded', {_uuid: self.known_date}))
 
 #  def test_collate(self): self.fail("Implement me")
   def test_collate(self): pass

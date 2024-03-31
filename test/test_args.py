@@ -126,6 +126,34 @@ class TestLib(TestWornBase):
       self.assertIsInstance(r, datetime)
       self.assertEqual(r, _known_date)
 
+  def test_datetime_datetimes(self):
+    with self.assertRaises(Exception):
+      _datetime('2024-03-31 12:45:56 08:00 am')
+
+    with self.assertRaises(Exception):
+      _datetime('2024-03-31 12 45 56')
+
+    _known_date = datetime(2024, 5, 1, 18, 22, 7)
+    with patch('datetime.datetime.strptime', return_value=_known_date) as m:
+      r = _datetime('2024-05-01 06:22:07 pm')
+      self.assertEqual(m.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, _known_date)
+
+    _known_date = datetime(2024, 5, 1, 18, 29)
+    with patch('datetime.datetime.strptime', return_value=_known_date) as m:
+      r = _datetime('2024-05-01 06:29')
+      self.assertEqual(m.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, _known_date)
+
+    _known_date = datetime(2024, 5, 1, 6, 33, 29)
+    with patch('datetime.datetime.strptime', return_value=_known_date) as m:
+      r = _datetime('2024-05-01 06:33:29')
+      self.assertEqual(m.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, _known_date)
+
   def test_datetime_digits_and_stream_ids(self):
     with patch('lib.parse_timestamp', return_value=datetime.now()) as mock_ts:
       r = _datetime('1234567890')
@@ -150,14 +178,45 @@ class TestLib(TestWornBase):
     with self.assertRaises(Exception):
       _datetime(5)
 
-  def test_parse_args(self): pass
-#    from lib.args import parse_args
-#    from argparse import Namespace
-#    with patch('builtins.print', new_callable=StringIO) as mock_debug:
-#      r = parse_args(['-h'])
-#      self.assertEqual(len(r), 5)
-#      self.assertIsInstance(r[-1], Namespace)
+  def test_datetime_last(self):
+    _when = datetime.now()
+    _proj = lib.project.Project(uuid4(), 'I was last', state='stopped', when=_when)
+    with patch.object(lib.project.Project, 'make', return_value=_proj) as mock:
+      r = _datetime('last')
+      self.assertEqual(mock.call_count, 1)
+      self.assertEqual(r, _when)
+
+  def test_parse_args(self):
+    from lib.args import parse_args
+    from argparse import Namespace
+    with patch('builtins.print') as mock_debug:
+      r = parse_args(['show', 'last'])
+      self.assertEqual(len(r), 5)
+      self.assertIsInstance(r[-1], Namespace)
+      self.assertEqual(mock_debug.call_count, 1)
       
+      r = parse_args(['start', 'last'])
+      self.assertEqual(len(r), 5)
+      self.assertIsInstance(r[-1], Namespace)
+      self.assertEqual(mock_debug.call_count, 2)
+
+    with patch('builtins.print') as mock_debug:
+      r = parse_args(['start', ' this', 'and', 'that '])
+      self.assertEqual(r[-1].project, 'this and that')
+
+    _uuid = uuid4()
+    with patch('builtins.print') as mock_debug:
+      r = parse_args(['start', str(_uuid)])
+      self.assertEqual(r[-1].project, _uuid)
+      self.assertEqual(mock_debug.call_count, 1)
+
+      with self.assertRaises(Exception):
+        r = parse_args(['start', [str(_uuid)]])
+      
+    with patch('builtins.print') as mock_debug:
+      r = parse_args(['report', '--comment', 'that', 'and', 'this'])
+      self.assertEqual(mock_debug.call_count, 1)
+      self.assertEqual(r[-1].comment, 'that and this')
 
 if __name__ == '__main__':
   unittest.main(buffer=True)

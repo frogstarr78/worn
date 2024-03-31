@@ -32,7 +32,7 @@ def _datetime(dtin:str | datetime) -> datetime:
     '''"parse" a timestamp'''
     return parse_timestamp(dtin)
   elif dtin == 'last':
-    return project.Project.make('last').when
+    return Project.make('last').when
   elif dtin == 'now':
     '''"parse" a "now"'''
     return lib.now()
@@ -95,11 +95,11 @@ def parse_args(argv=sys.argv) -> argparse.Namespace:
   ui = sub.add_parser('gui', help='Show the gui', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
   beg = sub.add_parser('start', help='Start a project', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  beg.add_argument('-a', '--at', type=_datetime, default=now(), metavar='DATETIME',  help='...the project at this specific time')
+  beg.add_argument('-a', '--at', type=_datetime, default=lib.now(), metavar='DATETIME',  help='...the project at this specific time')
   beg.add_argument('project',    nargs='+',     metavar='NAME|UUID',                 help='Project name or uuid.')
 
   end = sub.add_parser('stop', help='Stop a project', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  end.add_argument('-a', '--at',      type=_datetime, metavar='DATETIME',  default=now(),  help='...the project at this specific time')
+  end.add_argument('-a', '--at',      type=_datetime, metavar='DATETIME',  default=lib.now(),  help='...the project at this specific time')
   end.add_argument('-p', '--project', nargs='+',      metavar='NAME|UUID', default='last', help='Project name or uuid (or the last project if none provided).')
 
   ren = sub.add_parser('rename', help='Rename a project', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
