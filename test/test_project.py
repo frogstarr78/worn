@@ -1,5 +1,6 @@
 from test import *
 from lib.project import Project, FauxProject, LogProject
+from lib import now
 
 class TestProject(TestWornBase):
   def setUp(self):
@@ -96,8 +97,47 @@ class TestProject(TestWornBase):
       with patch('lib.db.get', return_value='Paperback') as mock_get:
         self.assertTrue(me.is_last())
 
-  def test_add(self): pass
-  def test_log(self): pass
+  def test_add(self):
+    _uuid = uuid4()
+    p = Project(_uuid, '  What are we doing?  ')
+    with patch('lib.db.add') as mock_add:
+      p.add()
+
+      self.assertEqual(mock_add.call_count, 1)
+      self.assertEqual(mock_add.call_args.args, ('projects', {'what are we doing?': _uuid, _uuid: 'What are we doing?'}))
+      self.assertEqual(mock_add.call_args.kwargs, dict(nx=True))
+
+  def test_log(self):
+    _uuid = uuid4()
+    p = Project(_uuid, '  What are we doing?  ')
+    with patch('lib.db.add') as mock_add:
+      p.log('stopped', self.known_date)
+
+      self.assertEqual(mock_add.call_count, 2)
+      self.assertEqual(mock_add.mock_calls[0].args, ('projects', {'what are we doing?': _uuid, _uuid: 'What are we doing?'}))
+      self.assertEqual(mock_add.mock_calls[1].args, ('logs', {'project': _uuid, 'state': 'stopped'}))
+      self.assertEqual(mock_add.mock_calls[0].kwargs, dict(nx=True))
+
+    _uuid = uuid4()
+    p = Project(_uuid, '  What else are we doing?  ')
+    with patch('builtins.input', return_value='y') as mock_in:
+      with patch('lib.db.add') as mock_add:
+        p.log('stopped', now() + timedelta(seconds=20))
+
+      self.assertEqual(mock_in.call_count, 1)
+      self.assertEqual(mock_add.call_count, 2)
+      self.assertEqual(mock_add.mock_calls[0].args, ('projects', {'what else are we doing?': _uuid, _uuid: 'What else are we doing?'}))
+      self.assertEqual(mock_add.mock_calls[1].args, ('logs', {'project': _uuid, 'state': 'stopped'}))
+      self.assertEqual(mock_add.mock_calls[0].kwargs, dict(nx=True))
+
+    _uuid = uuid4()
+    p = Project(_uuid, "Don't start in the future")
+    with patch('builtins.input', return_value='not yes') as mock_in:
+      with patch('lib.db.add') as mock_add:
+        p.log('stopped', now() + timedelta(seconds=20))
+
+      self.assertEqual(mock_in.call_count, 1)
+      self.assertEqual(mock_add.call_count, 0)
 
   def test_stop_project(self):
     proj = LogProject(uuid4(), 'Mud Larker', 'stopped', self._timestamp_id(self.known_date))
@@ -123,6 +163,15 @@ class TestProject(TestWornBase):
             p.start(now())
             self.assertFalse(dba.call_args.called)
 
+    with patch('lib.db.has', return_value=True) as dbh:
+      with patch('lib.db.xinfo', return_value=now() - timedelta(minutes=1)) as dbx:
+        with patch('lib.db.add', return_value=now() - timedelta(minutes=1)) as dba:
+          with patch.object(Project, 'make') as mock_p:
+            p.start(now())
+            self.assertTrue(dbh.call_args.called)
+            self.assertTrue(dbx.call_args.called)
+            self.assertEqual(dba.call_count, 3)
+            self.assertTrue(mock_p.call_args.called)
 
   def test_rename(self):
     with self.assertRaises(Exception):
@@ -348,7 +397,7 @@ class TestProject(TestWornBase):
       with self.assertRaises(Exception):
         Project.make(123)
 
-  def test_nearest_project_by_name(self):
+  def test_nearest_project_by_name_last(self):
     f = Project(uuid4(), 'Fake it!')
     with patch('builtins.print') as mock_debug:
       with patch.object(Project, 'make', return_value=f) as fake_proj:
@@ -356,6 +405,8 @@ class TestProject(TestWornBase):
         self.assertTrue(mock_debug.called)
         self.assertEqual(r, f)
 
+  def test_nearest_project_by_name_matching_uuid(self):
+    f = Project(uuid4(), 'Fake it!')
     with patch('builtins.print') as mock_debug:
       with patch('lib.db.has', return_value=True) as dbh:
         with patch.object(Project, 'make', return_value=f) as fake_proj:
@@ -364,22 +415,77 @@ class TestProject(TestWornBase):
           self.assertTrue(fake_proj.called)
           self.assertEqual(r, f)
 
+  def test_nearest_project_by_name_matching_project_name(self):
     with patch('builtins.print') as mock_debug:
-      with patch('lib.db.has', return_value=True) as dbh:
-        with patch.object(Project, 'make', return_value=f) as fake_proj:
-          r = Project.nearest_project_by_name('the name of a project that exists')
-          self.assertTrue(mock_debug.called)
-          self.assertTrue(fake_proj.called)
-          self.assertEqual(r, f)
+      with patch('lib.db.has', return_value=False) as dbh:
+        with patch('lib.db.keys', return_value=('Test1', 'Test2')) as dbk:
+          with patch.object(Project, 'make', side_effect=(Project(uuid4(), 'Test1'), Project(uuid4(), 'Test2'))) as fake_proj:
 
-  def test_all(self): pass
+            r = Project.nearest_project_by_name('the name of a project that exists')
+
+            self.assertEqual(dbh.call_count, 2)
+            self.assertEqual(dbk.call_count, 1)
+
+            self.assertTrue(mock_debug.called)
+            self.assertFalse(fake_proj.called)
+            self.assertEqual(len(r), 0)
+
+            r = Project.nearest_project_by_name('t')
+
+            self.assertEqual(dbh.call_count, 4)
+            self.assertEqual(dbk.call_count, 2)
+
+            self.assertTrue(fake_proj.call_count, 2)
+            self.assertEqual(len(r), 2)
+            self.assertIn('Test1', (_.name for _ in r))
+            self.assertIn('Test2', (_.name for _ in r))
+            self.assertTrue(mock_debug.called)
+
+    with patch('builtins.print') as mock_debug:
+      with patch('lib.db.has', return_value=False) as dbh:
+        with patch('lib.db.keys', return_value=('Test1', 'Test2')) as dbk:
+          with patch.object(Project, 'make', side_effect=(Project(uuid4(), 'Test1'), Project(uuid4(), 'Test2'))) as fake_proj:
+            r = Project.nearest_project_by_name('test')
+
+            self.assertEqual(dbh.call_count, 2)
+            self.assertEqual(dbk.call_count, 1)
+
+            self.assertTrue(fake_proj.call_count, 1)
+            self.assertEqual(len(r), 2)
+            self.assertIn('Test1', (_.name for _ in r))
+            self.assertIn('Test2', (_.name for _ in r))
+            self.assertTrue(mock_debug.called)
+
+    with patch('builtins.print') as mock_debug:
+      with patch('lib.db.has', return_value=False) as dbh:
+        with patch('lib.db.keys', return_value=('Test1', 'Test2')) as dbk:
+          with patch.object(Project, 'make', side_effect=(Project(uuid4(), 'Test2'),)) as fake_proj:
+            r = Project.nearest_project_by_name('Test2')
+
+            self.assertEqual(dbh.call_count, 2)
+            self.assertEqual(dbk.call_count, 1)
+
+            self.assertTrue(fake_proj.call_count, 1)
+            self.assertEqual(len(r), 1)
+            self.assertIn('Test2', (_.name for _ in r))
+            self.assertTrue(mock_debug.called)
+
+    with patch('builtins.print') as mock_debug:
+      with patch('lib.db.has', return_value=False) as dbh:
+        with patch('lib.db.keys', return_value=('Test2',)) as dbk:
+          r = Project.nearest_project_by_name('Test1')
+
+          self.assertEqual(dbh.call_count, 2)
+          self.assertEqual(dbk.call_count, 1)
+
+          self.assertEqual(len(r), 0)
+          self.assertTrue(mock_debug.called)
+
   def test_all(self):
     _uuid = uuid4()
 
-#    with patch('lib.db.get', return_value={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
-#    with patch('lib.db.get', side_effect={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
     with patch('lib.db.get', return_value={str(_uuid): 'This and that', 'this and that': str(_uuid)}) as mock_get:
-      with patch('lib.project.Project.make', return_value=Project(_uuid, 'This and that')) as mock_project:
+      with patch('lib.project.Project.make', side_effect=iter([Project(_uuid, 'This and that')])) as mock_project:
         all_projects = Project.all()
 
         self.assertEqual(mock_get.call_count, 1)
@@ -387,15 +493,72 @@ class TestProject(TestWornBase):
 
         all_projects = list(all_projects)
         self.assertEqual(len(all_projects), 1)
+        self.assertEqual(mock_project.call_count, 1)
         self.assertEqual(all_projects[0], Project(_uuid, 'This and that'))
+ 
+  def test_all_matching_since(self): pass
+  def test_all_since(self):
+    when = datetime.now()
+    p1 = LogProject(uuid4(), 'This is the project name', state='started', when=self._timestamp_id(when - timedelta(seconds=3)))
+    p2 = LogProject(p1.id,   'This is the project name', state='stopped', when=self._timestamp_id(when - timedelta(seconds=1)))
+    sample_log_entries = [
+      (p1.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
+      (p2.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
+    ]
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2])) as mock_project:
+        r = list(LogProject.all_since(when - timedelta(seconds=4)))
 
-#      first_project = all_projects[0]
-#      self.assertIsInstance(first_project, Project)
-#      self.assertEqual(first_project.id, _uuid)
-#      self.assertEqual(first_project.name, 'This and that')
-#      self.assertEqual(first_project.state, 'stopped')
-#      self.assertIsInstance(first_project.when, datetime)
+        self.assertTrue(mock_range.called)
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, ('logs',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when - timedelta(seconds=4)), count=None))
 
+        self.assertEqual(mock_project.call_count, 2)
+
+        self.assertListEqual(r, [p1, p2])
+
+    _vuuid = uuid4()
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2])) as mock_project:
+        r = LogProject.all_since(when - timedelta(seconds=4), _version=_vuuid)
+
+        self.assertTrue(mock_range.called)
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when - timedelta(seconds=4)), count=None))
+
+  def test_all_matching(self):
+    p1 = LogProject(uuid4(), 'This and that',            state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=5)))
+    p2 = LogProject(uuid4(), 'This is the project name', state='started', when=self._timestamp_id(datetime.now() - timedelta(seconds=3)))
+    p3 = LogProject(p2.id,   'This is the project name', state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=1)))
+    sample_log_entries = [
+      (p1.timestamp_id, {'project': str(p1.id), 'state': 'stopped'}),
+      (p2.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
+      (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
+    ]
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
+        r = list(LogProject.all_matching(p2.name))
+
+        self.assertTrue(mock_range.called)
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, ('logs',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=None))
+
+        self.assertEqual(mock_project.call_count, 3)
+
+        self.assertListEqual(r, [p2, p3])
+
+    _vuuid = uuid4()
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
+        r = LogProject.all_matching(p2.name, _version=_vuuid)
+
+        self.assertTrue(mock_range.called)
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=None))
 
   def test_cache(self):
     with patch('lib.db.add') as mock_add:
@@ -406,9 +569,6 @@ class TestProject(TestWornBase):
         self.assertEqual(mock_add.call_count, 2)
         self.assertEqual(mock_add.mock_calls[0].args, ('cache:tickets', {_uuid: 123}))
         self.assertEqual(mock_add.mock_calls[1].args, ('cache:recorded', {_uuid: self.known_date}))
-
-#  def test_collate(self): self.fail("Implement me")
-  def test_collate(self): pass
 
 class TestFauxProject(TestWornBase):
   def test_init(self):
@@ -457,6 +617,15 @@ class TestLogProject(TestWornBase):
     self.assertEqual(log.when, self.known_date)
     self.assertEqual(log.timestamp_id, tsid)
     self.assertEqual(log.serial, 0)
+
+  def test_add(self):
+    _uuid = uuid4()
+    p = LogProject(_uuid, 'What are we doing?', when='1711944447-1')
+    with patch('lib.db.add') as mock_add:
+      p.add()
+
+      self.assertEqual(mock_add.call_count, 1)
+      self.assertEqual(mock_add.call_args.args, ('logs', {'project': _uuid, 'state': 'stopped'}))
 
   def test_remove(self):
     log = LogProject(uuid4(), 'A project', state='started', when=self._timestamp_id(self.known_date))

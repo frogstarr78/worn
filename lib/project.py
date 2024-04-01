@@ -218,11 +218,8 @@ class LogProject(Project):
 
   @classmethod
   def all_matching_since(kind, matching:str, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:
-    if isinstance(since, str) and istimestamp_id(since):
-      start = since.strip()
-    else:
-      _ts = str(parse_timestamp(since).timestamp()).replace('.', '')[:13]
-      start = f'{_ts.lstrip():0<13}-0'
+    _ts = str(parse_timestamp(since).timestamp()).replace('.', '')[:13]
+    start = f'{_ts.lstrip():0<13}-0'
 
     key = 'logs'
     if _version is not None:
@@ -232,11 +229,8 @@ class LogProject(Project):
 
   @classmethod
   def all_since(kind, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:
-    if isinstance(since, str) and istimestamp_id(since):
-      start = since.strip()
-    else:
-      _ts = str(parse_timestamp(since).timestamp()).replace('.', '')[:13]
-      start = f'{_ts.lstrip():0<13}-0'
+    _ts = str(parse_timestamp(since).timestamp()).replace('.', '')[:13]
+    start = f'{_ts.lstrip():0<13}-0'
 
     key = 'logs'
     if _version is not None:
