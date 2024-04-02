@@ -2,6 +2,7 @@ from argparse import Namespace
 from . import *
 from .colors import colors
 from .project import Project, LogProject
+import smtplib
 
 class Report(object):
   SCALES = {'w': WEEK, 'd': DAY, 'h': HOUR, 'm': MINUTE, 's': SECOND}
@@ -43,10 +44,11 @@ class Report(object):
   def _sorted_data(self):
     return sorted(self._data.items(), key=lambda pnt: pnt[0].name.casefold())
 
-  def mail(self, to:str, noop:bool=False) -> None:
-    body = f'{self:{args.format}}'
+  def mail(self, to:str, fmt:str='simple', *, noop:bool=False) -> None:
+    body = f'{self:{fmt}}'
     if noop:
       print(body)
+      return
 
     with smtplib.SMTP('localhost') as mc:
       mc.set_debuglevel(1)

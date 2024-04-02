@@ -97,7 +97,7 @@ def main() -> None:
       debug('Reporting ALL logs to a ticket is currently not supported.')
       sys.exit(OK)
     case Namespace(action='report', project=None, since=None, ticket=None, mailto=to):
-      res = report.mail(to, p.noop)
+      res = report.mail(to, p.format, p.noop)
       sys.exit(res)
     case Namespace(action='report', project=project, since=None, ticket=None, mailto=None):
       report = Report(LogProject.all_matching(project), None, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))

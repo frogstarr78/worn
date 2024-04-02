@@ -226,6 +226,7 @@ class LogProject(Project):
       key = f'logs-{str(_version)}'
 
     return (_project for (tid, project) in db.xrange(key, start=start, count=count) if (_project := Project.make(project, when=tid)).equiv(matching))
+#    return (Project.make(project.get('project'), when=tid)) for (tid, project) in db.xrange(key, start=start, count=count) if (_project := .equiv(matching))
 
   @classmethod
   def all_since(kind, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:

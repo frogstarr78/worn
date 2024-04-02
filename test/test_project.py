@@ -496,70 +496,6 @@ class TestProject(TestWornBase):
         self.assertEqual(mock_project.call_count, 1)
         self.assertEqual(all_projects[0], Project(_uuid, 'This and that'))
  
-  def test_all_matching_since(self): pass
-  def test_all_since(self):
-    when = datetime.now()
-    p1 = LogProject(uuid4(), 'This is the project name', state='started', when=self._timestamp_id(when - timedelta(seconds=3)))
-    p2 = LogProject(p1.id,   'This is the project name', state='stopped', when=self._timestamp_id(when - timedelta(seconds=1)))
-    sample_log_entries = [
-      (p1.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
-      (p2.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
-    ]
-    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.project.Project.make', side_effect=iter([p1, p2])) as mock_project:
-        r = list(LogProject.all_since(when - timedelta(seconds=4)))
-
-        self.assertTrue(mock_range.called)
-        self.assertEqual(mock_range.call_count, 1)
-        self.assertEqual(mock_range.call_args.args, ('logs',))
-        self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when - timedelta(seconds=4)), count=None))
-
-        self.assertEqual(mock_project.call_count, 2)
-
-        self.assertListEqual(r, [p1, p2])
-
-    _vuuid = uuid4()
-    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.project.Project.make', side_effect=iter([p1, p2])) as mock_project:
-        r = LogProject.all_since(when - timedelta(seconds=4), _version=_vuuid)
-
-        self.assertTrue(mock_range.called)
-        self.assertEqual(mock_range.call_count, 1)
-        self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
-        self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when - timedelta(seconds=4)), count=None))
-
-  def test_all_matching(self):
-    p1 = LogProject(uuid4(), 'This and that',            state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=5)))
-    p2 = LogProject(uuid4(), 'This is the project name', state='started', when=self._timestamp_id(datetime.now() - timedelta(seconds=3)))
-    p3 = LogProject(p2.id,   'This is the project name', state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=1)))
-    sample_log_entries = [
-      (p1.timestamp_id, {'project': str(p1.id), 'state': 'stopped'}),
-      (p2.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
-      (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
-    ]
-    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
-        r = list(LogProject.all_matching(p2.name))
-
-        self.assertTrue(mock_range.called)
-        self.assertEqual(mock_range.call_count, 1)
-        self.assertEqual(mock_range.call_args.args, ('logs',))
-        self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=None))
-
-        self.assertEqual(mock_project.call_count, 3)
-
-        self.assertListEqual(r, [p2, p3])
-
-    _vuuid = uuid4()
-    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
-        r = LogProject.all_matching(p2.name, _version=_vuuid)
-
-        self.assertTrue(mock_range.called)
-        self.assertEqual(mock_range.call_count, 1)
-        self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
-        self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=None))
-
   def test_cache(self):
     with patch('lib.db.add') as mock_add:
       with patch('builtins.print') as mock_debug:
@@ -635,6 +571,146 @@ class TestLogProject(TestWornBase):
       self.assertEqual(mock_rm.call_count, 1)
       self.assertEqual(mock_rm.call_args.args, ('logs', self._timestamp_id(self.known_date)))
   
+  def test_all(self):
+    _uuid = uuid4()
+    p1 = LogProject(uuid4(), 'This and that',            state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=5)))
+    p2 = LogProject(uuid4(), 'This is the project name', state='started', when=self._timestamp_id(datetime.now() - timedelta(seconds=3)))
+    p3 = LogProject(p2.id,   'This is the project name', state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=1)))
+    sample_log_entries = [
+      (p1.timestamp_id, {'project': str(p1.id), 'state': 'stopped'}),
+      (p2.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
+      (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
+    ]
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
+        all_projects = list(LogProject.all())
+
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, ('logs',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=None))
+
+        self.assertEqual(mock_project.call_count, 3)
+        self.assertEqual(mock_project.mock_calls[0].args, (sample_log_entries[0][1], ))
+        self.assertEqual(mock_project.mock_calls[0].kwargs, dict(when=sample_log_entries[0][0]))
+        self.assertEqual(mock_project.mock_calls[1].args, (sample_log_entries[1][1], ))
+        self.assertEqual(mock_project.mock_calls[1].kwargs, dict(when=sample_log_entries[1][0]))
+        self.assertEqual(mock_project.mock_calls[2].args, (sample_log_entries[2][1], ))
+        self.assertEqual(mock_project.mock_calls[2].kwargs, dict(when=sample_log_entries[2][0]))
+ 
+    _vuuid = uuid4()
+    when = datetime.now() - timedelta(seconds=4)
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
+        all_projects = list(LogProject.all(count=9, _version=_vuuid))
+
+        self.assertTrue(mock_range.called)
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=9))
+        self.assertEqual(mock_project.call_count, 3)
+ 
+  def test_all_matching_since(self):
+    when = datetime.now() - timedelta(seconds=4)
+    p1 = LogProject(uuid4(), 'The flag of Hollywood',  state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=5)))
+    p2 = LogProject(uuid4(), 'Will you do me a favor', state='started', when=self._timestamp_id(datetime.now() - timedelta(seconds=3)))
+    p3 = LogProject(p2.id,   p2.name,                  state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=1)))
+    p4 = LogProject(p1.id,   p1.name,                  state='started', when=self._timestamp_id(datetime.now()))
+    sample_log_entries = [
+      (p1.timestamp_id, {'project': str(p1.id), 'state': 'stopped'}),
+      (p2.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
+      (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'}),
+      (p4.timestamp_id, {'project': str(p1.id), 'state': 'started'})
+    ]
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.db.get') as mock_get:
+        with patch('lib.project.Project.make', side_effect=iter([p2, p3, p4])) as mock_project:
+          r = list(LogProject.all_matching_since(p1.name, when))
+
+          self.assertEqual(mock_range.call_count, 1)
+          self.assertEqual(mock_range.call_args.args, ('logs',))
+          self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when), count=None))
+          self.assertEqual(mock_get.call_count, 3)
+          self.assertEqual(mock_project.call_count, 3)
+
+          self.assertListEqual(r, [p2, p3])
+
+    _vuuid = uuid4()
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.db.get') as mock_get:
+        with patch('lib.project.Project.make', side_effect=iter([p2, p3, p4])) as mock_project:
+          r = list(LogProject.all_matching_since(p1.name, when, _version=_vuuid))
+
+          self.assertEqual(mock_range.call_count, 1)
+          self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
+          self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when), count=None))
+          self.assertEqual(mock_get.call_count, 3)
+          self.assertEqual(mock_project.call_count, 3)
+
+          self.assertListEqual(r, [p2, p3])
+
+  def test_all_since(self):
+    when = datetime.now()
+    p1 = LogProject(uuid4(), 'This is the project name', state='started', when=self._timestamp_id(when - timedelta(seconds=3)))
+    p2 = LogProject(p1.id,   'This is the project name', state='stopped', when=self._timestamp_id(when - timedelta(seconds=1)))
+    sample_log_entries = [
+      (p1.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
+      (p2.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
+    ]
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2])) as mock_project:
+        r = list(LogProject.all_since(when - timedelta(seconds=4)))
+
+        self.assertTrue(mock_range.called)
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, ('logs',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when - timedelta(seconds=4)), count=None))
+
+        self.assertEqual(mock_project.call_count, 2)
+
+        self.assertListEqual(r, [p1, p2])
+
+    _vuuid = uuid4()
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2])) as mock_project:
+        r = LogProject.all_since(when - timedelta(seconds=4), _version=_vuuid)
+
+        self.assertTrue(mock_range.called)
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when - timedelta(seconds=4)), count=None))
+
+  def test_all_matching(self):
+    p1 = LogProject(uuid4(), 'This and that',            state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=5)))
+    p2 = LogProject(uuid4(), 'This is the project name', state='started', when=self._timestamp_id(datetime.now() - timedelta(seconds=3)))
+    p3 = LogProject(p2.id,   'This is the project name', state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=1)))
+    sample_log_entries = [
+      (p1.timestamp_id, {'project': str(p1.id), 'state': 'stopped'}),
+      (p2.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
+      (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
+    ]
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
+        r = list(LogProject.all_matching(p2.name))
+
+        self.assertTrue(mock_range.called)
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, ('logs',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=None))
+
+        self.assertEqual(mock_project.call_count, 3)
+
+        self.assertListEqual(r, [p2, p3])
+
+    _vuuid = uuid4()
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
+        r = LogProject.all_matching(p2.name, _version=_vuuid)
+
+        self.assertTrue(mock_range.called)
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=None))
+
 #  def test_log_format(self):
 #    from lib.colors import colors
 #    _uuid = uuid4()

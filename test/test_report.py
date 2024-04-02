@@ -67,11 +67,34 @@ class TestReport(TestWornBase):
 
           self.assertEqual(69.0, r._data[p1])
 
-#    def test_mail(self): self.fail('implement me')
-    def test_mail(self): pass
+    def test_mail(self):
+      _uuid = uuid4()
+      with patch('lib.db.get') as mock_get:
+        r = Report({Project(_uuid, 'Bye'): 3}, datetime.now(), 's', include_all=False, show_header=True)
+        with patch('builtins.print') as mock_debug:
+          r.mail('me', 'simple', noop=True)
+          self.assertEqual(mock_debug.call_count, 1)
 
-#    def test_sorted_data(self): self.fail('implement me')
-    def test_sorted_data(self): pass
+        with patch('smtplib.SMTP') as fake_mail:
+          r.mail('you', 'simple')
+          self.assertEqual(fake_mail.call_count, 1)
+          self.assertEqual(fake_mail.call_args.args, ('localhost',))
+
+#          self.assertEqual(fake_mail.set_debuglevel.call_count, 1)
+#          self.assertEqual(fake_mail.set_debuglevel.call_args.args, (1,))
+
+#          self.assertEqual(fake_mail.sendmail.call_count, 1)
+#          self.assertEqual(fake_mail.sendmail.call_args.args, ('scott@viviotech.net', 'you', f'''{3: >8}s id {_uuid} project 'Bye'\n'''))
+        
+
+    def test_sorted_data(self):
+      _uuid = uuid4()
+      _uuid2 = uuid4()
+      with patch.object(Project, 'make', return_value=Project(uuid4(), 'React', 'stopped')) as mock_last:
+        rep = Report({Project(_uuid, 'Bye'): 30, Project(_uuid2, 'Abc'): 50})
+        res = rep._sorted_data
+        self.assertEqual((Project(_uuid2, 'Abc'), 0), res[0])
+        self.assertEqual((Project(_uuid, 'Bye'), 0), res[1])
 
     def test_post_with_noop_doesnt_post(self):
       '''
