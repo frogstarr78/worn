@@ -58,9 +58,11 @@ class Report(object):
     if not noop:
       import requests
 
+    _scale = self.scale
+    self.scale = 's'
     r = set([])
     for project, time in self._sorted_data:
-      _duration = float(time)/MINUTE
+      _duration = self._how_long(time)[0]/MINUTE
       _comment = comment.format(project=project)
       if noop:
         debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={ticket}&time_spent={_duration}&body="{_comment}"')
@@ -69,30 +71,16 @@ class Report(object):
         Project.cache(ticket, project)
         resp = requests.post('https://portal.viviotech.net/api/2.0/', params=dict(method='support.ticket_post_staff_response', comment=1, ticket_id=ticket, time_spent=_duration, body=_comment))
         r.add(resp.status_code < 400)
+    self.scale = _scale
     return all(isinstance(_, bool) and _ for _ in r)
 
   def _how_long(self, ts:int) -> tuple[int | float]:
-    if self.scale == 'w':
-      return (
-        int(ts/WEEK),
-        int(ts/DAY),
-        int(ts%DAY/HOUR),
-        int(ts%HOUR/MINUTE),
-        int(ts%MINUTE)
-      )
-    elif self.scale == 'd':
-      return (
-        int(ts/DAY),
-        int(ts%DAY/HOUR),
-        int(ts%HOUR/MINUTE),
-        int(ts%MINUTE)
-      )
-
-    elif self.scale == 'h':
-      return ( int(ts/HOUR), int(ts%HOUR/MINUTE), int(ts%MINUTE) )
-
-    elif self.scale == 'm':
-      return ( int(ts/MINUTE), int(ts%MINUTE) )
+    match self.scale:
+      case 'w': return ( int(ts/WEEK), int(ts%WEEK/DAY), int(ts%DAY/HOUR), int(ts%HOUR/MINUTE), int(ts%MINUTE))
+      case 'd': return (               int(ts/DAY),      int(ts%DAY/HOUR), int(ts%HOUR/MINUTE), int(ts%MINUTE))
+      case 'h': return (                                 int(ts/HOUR),     int(ts%HOUR/MINUTE), int(ts%MINUTE))
+      case 'm': return (                                                   int(ts/MINUTE),      int(ts%MINUTE))
+      case _:   return (                                                                        int(ts),)
 
   def _simple_format(self) -> str:
     if self.show_header:
@@ -108,22 +96,26 @@ class Report(object):
       if total == 0 and not self.include_all:
         continue
 
-      if self.scale == 'w':
-        r += '{:02}w {:02}d {:02}h {:02}m {:02}s'.format(*self._how_long(total))
-        t =  '{:02}w {:02}d {:02}h {:02}m {:02}s'.format(*self._how_long(all_total))
-      if self.scale == 'd':
-        r += '{:03}d {:02}h {:02}m {:02}s'.format(*self._how_long(total))
-        t =  '{:03}d {:02}h {:02}m {:02}s'.format(*self._how_long(all_total))
-      if self.scale == 'h':
-        r += '{:04}h {:02}m {:02}s'.format(*self._how_long(total))
-        t =  '{:04}h {:02}m {:02}s'.format(*self._how_long(all_total))
-      if self.scale == 'm':
-        r += '{:04}m {:02}s'.format(*self._how_long(total))
-        t =  '{:04}m {:02}s'.format(*self._how_long(all_total))
+      match self.scale:
+        case 'w':
+          r += '{:02}w {:02}d {:02}h {:02}m {:02}s'.format(*self._how_long(total))
+          t =  '{:02}w {:02}d {:02}h {:02}m {:02}s'.format(*self._how_long(all_total))
+        case 'd':
+          r += '{:03}d {:02}h {:02}m {:02}s'.format(*self._how_long(total))
+          t =  '{:03}d {:02}h {:02}m {:02}s'.format(*self._how_long(all_total))
+        case 'h':
+          r += '{:04}h {:02}m {:02}s'.format(*self._how_long(total))
+          t =  '{:04}h {:02}m {:02}s'.format(*self._how_long(all_total))
+        case 'm':
+          r += '{:04}m {:02}s'.format(*self._how_long(total))
+          t =  '{:04}m {:02}s'.format(*self._how_long(all_total))
+        case 's':
+          r += f'{int(total): >8}s'
+        case scale:
+          raise Exception('Unknown scale {scale!r}.')
 
-      if self.scale == 's':
-        r += f'{int(total): >8}s'
-      else:
+
+      if self.scale != 's':
         r += f' total {int(total): >8}'
 
       r += f' id {project:id} project {project:name!r}'
@@ -134,15 +126,13 @@ class Report(object):
     return r
 
   def _csv_format(self) -> str:
-    if self.show_header:
-      r = 'Time spent report\n'
-    else:
-      r = ''
-    if self.scale == 'w':   r += 'weeks,days,hours,minutes,seconds,'
-    elif self.scale == 'd': r += 'days,hours,minutes,seconds,'
-    elif self.scale == 'h': r += 'hours,minutes,seconds,'
-    elif self.scale == 'm': r += 'minutes,seconds,'
-    elif self.scale == 's': pass
+    match (self.show_header, self.scale):
+      case (False,  _): r = ''
+      case (True, 'w'): r = 'Time spent report\nweeks,days,hours,minutes,seconds,'
+      case (True, 'd'): r = 'Time spent report\ndays,hours,minutes,seconds,'
+      case (True, 'h'): r = 'Time spent report\nhours,minutes,seconds,'
+      case (True, 'm'): r = 'Time spent report\nminutes,seconds,'
+      case (True, 's'): r = ''
 
     r += 'total (in seconds),id,project,running'
     r += isinstance(self.at, datetime) and ',since' or ''
@@ -167,14 +157,13 @@ class Report(object):
     return r
 
   def _time_format(self) -> str:
-    if self.show_header:
-      if self.scale == 'w':   r = ' w  d  h  m  s\n'
-      elif self.scale == 'd': r = '  d  h  m  s\n'
-      elif self.scale == 'h': r = '  h  m  s\n'
-      elif self.scale == 'm': r = '   m  s\n'
-      elif self.scale == 's': r = '       s\n'
-    else:
-      r = ''
+    match (self.show_header, self.scale):
+      case (False,  _): r = ''
+      case (True, 'w'): r = ' w  d  h  m  s\n'
+      case (True, 'd'): r = '  d  h  m  s\n'
+      case (True, 'h'): r = '  h  m  s\n'
+      case (True, 'm'): r = '   m  s\n'
+      case (True, 's'): r = '       s\n'
 
     all_total = sum(self._data.values())
     t = ''
