@@ -288,8 +288,6 @@ class TestReport(TestWornBase):
         r.show_header=False
         self.assertNotIn('  h  m  s', r._time_format())
 
-        self.fail('Fix me')
-
     def test_how_long_in_minutes(self):
       with patch.object(Project, 'make', return_value=Project(5, 'Ima sneeky thing', 'stopped')) as fake_last_not_running:
         when = now()
