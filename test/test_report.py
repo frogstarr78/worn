@@ -103,7 +103,7 @@ class TestReport(TestWornBase):
       '''
       with patch.object(Project, 'make', return_value=Project(5, 'Ima sneeky thing', 'stopped')) as fake_last_not_running:
         when = now()
-        with patch('sys.stderr', new_callable=StringIO) as mock_debug:
+        with patch('builtins.print') as mock_debug:
           with patch.multiple(Project, cache=DEFAULT, make=DEFAULT, all=DEFAULT) as whos_line:
             p1  = LogProject(uuid4(), 'bob',   'started', when - timedelta(seconds=78))
             p2  = LogProject(p1.id,            p1.name, 'stopped', when)
@@ -113,7 +113,7 @@ class TestReport(TestWornBase):
             self.assertFalse(whos_line['cache'].called)
             self.assertEqual(whos_line['cache'].call_count, 0)
 
-            self.assertEqual(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id=1&time_spent=1.3&body="hello"\n', mock_debug.getvalue())
+            self.assertEqual(mock_debug.call_args.args, (f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id=1&time_spent=1.3&body="hello"',))
             self.assertTrue(res)
 
     def test_post_with_custom_comment_and_sccessful_result(self):
@@ -184,7 +184,7 @@ class TestReport(TestWornBase):
           self.assertTrue(csv_fmt.called)
           self.assertEqual(csv_fmt.call_count, 1)
 
-        self.assertIn('<lib.report.Report object at 0x7', '{0!s}'.format(r))
+        self.assertIn('<lib.report.Report object at 0x7', '{r!s}')
 
     def test_format_simple(self):
       with patch.object(Project, 'make', return_value=Project(5, 'Ima sneeky thing', 'stopped')) as fake_last_not_running:
