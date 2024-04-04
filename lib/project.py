@@ -51,17 +51,13 @@ class Project(object):
     return self.state == 'started'
 
   def is_last(self):
-    return self == Project.make('last')
+    return self == Project.last()
 
   def add(self):
+    db.add('begun', now().timestamp(), expire=3600, nx=True)
     db.add('projects', {self.name.casefold().strip(): self.id, self.id: self.name.strip()}, nx=True)
 
   def log(self, state:str, at:datetime=now()) -> None:
-    if at > now() + timedelta(seconds=10):
-      future_time = input(f'The time that you specified "{at:%F %T}" is in the future. Are you certain you want to {state.rstrip("ed")} the {self:name} project in the future (y|N)? ')
-      if not future_time.strip().casefold().startswith('y'):
-        return
-    self.add()
     LogProject(self.id, self.name, state, at).add()
 
   def stop(self, at:datetime=now()) -> None:
@@ -69,14 +65,8 @@ class Project(object):
       self.log('stopped', at)
 
   def start(self, at:datetime=now()) -> None:
-    if db.has('logs'):
-      oldest_log = parse_timestamp(db.xinfo('logs', 'last-generated-id', default=now()))
-      if at < oldest_log:
-        raise Exception(f'The start time that you specified "{at:%F %T}" is older than the last log entered. Please, choose a different time or adjust the previously entered log entry time "{oldest_log:%F %T}".')
-
-    db.add('begun', now().timestamp(), expire=3600, nx=True)
-
-    last(self.__class__).stop(at=at)
+    Project.last().stop(at=at)
+    self.add()
     self.log('started', at)
 
   def rename(self, new) -> None:
@@ -93,6 +83,46 @@ class Project(object):
 
     db.rm('projects', self.name.casefold().strip())
     db.rm('projects', self.id)
+
+  @classmethod
+  def last(kind) -> Self:
+    if len(logs := db.xrange('logs', count=1, reverse=True)) == 0:
+      return FauxProject()
+
+    tsid, last = logs[0]
+    _id = UUID(last.get('project'))
+    return kind(_id, db.get('projects', _id), last.get('state', 'stopped'), parse_timestamp(tsid))
+
+  @classmethod
+  def make(kind, nameorid:Any, when:datetime=now()) -> Self:
+    match nameorid:
+      case {'project': nameorid as _uuid, 'state': state} if isuuid(_uuid):
+        return LogProject(_uuid, db.get('projects', _uuid), state, when)
+#      case {'project': nameorid as _uuid} if isuuid(_uuid):
+#        return LogProject(_uuid, db.get('projects', _uuid), nameorid.get('state'), when)
+      case 'last':
+        kind.last()
+      case nameorid as _uuid if isinstance(_uuid, UUID) and db.has('projects', _uuid):
+        return Project(nameorid, db.get('projects', _uuid))
+      case str(nameorid) as _uuid if isuuid(_uuid) and db.has('projects', _uuid):
+        return Project(UUID(_uuid), db.get('projects', _uuid))
+      case str(nameorid) if istimestamp_id(nameorid) and len(db.xrange('logs', start=nameorid, count=1)) == 1:
+        record = db.xrange('logs', start=nameorid, count=1)[0]
+        return LogProject.make(record[1], record[0])
+      case str(nameorid) as _name if db.has('projects', _name.casefold().strip()):
+        return Project(UUID(db.get('projects', _name.casefold().strip())))
+      case str(nameorid) as _name:
+        project = Project(uuid4(), _name)
+        project.add()
+        return project
+      case ( Project(id=_) | Project(name=_) ) as project:
+        return project
+      case None | [] | tuple() | {} | set():
+        debug(f"Project {nameorid!r} was empty.")
+        return FauxProject()
+      case _:
+        debug(msg := f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
+        raise Exception(msg)
 
   @classmethod
   def nearest_project_by_name(kind, name:str) -> set[str]:
@@ -175,6 +205,17 @@ class LogProject(Project):
       case _:       return super().__format__(fmt_spec)
 
   def add(self) -> None:
+    at = self.when
+    if db.has('logs'):
+      oldest_log = parse_timestamp(db.xinfo('logs', 'last-generated-id', default=now()))
+      if at < oldest_log:
+        raise Exception(f'The start time that you specified "{at:%F %T}" is older than the last log entered. Please, choose a different time or adjust the previously entered log entry time "{oldest_log:%F %T}".')
+
+    if at > now() + timedelta(seconds=10):
+      future_time = input(f'The time that you specified "{at:%F %T}" is in the future. Are you certain you want to {state.rstrip("ed")} the {self:name} project in the future (y|N)? ')
+      if not future_time.strip().casefold().startswith('y'):
+        return
+
     _ts = str(self.when.timestamp()).replace('.', '')[:13]
     db.add('logs', {'project': self.id, 'state': self.state})
 
@@ -245,59 +286,14 @@ class LogProject(Project):
 
   @classmethod
   def edit_last_log_name(kind, new_name:str) -> None:
-    last = Project.make('last')
-    project = LogProject.all_since(last.when, count=1)[0]
-    if project != last or project.when != last.when:
-      debug(f'Unable to change no-last project state')
-      sys.exit(ERR)
-
+    project = LogProject.last()
     project.remove()
-
-    LogProject(project.id, new_name, project.state, project.when).add()
+    project.name = new_name
+    project.add()
 
   @classmethod
   def edit_last_log_state(kind, new_state:str) -> None:
-    last = Project.make('last')
-    project = LogProject.all(last.when, count=1)[0]
-    if project != last or project.when != last.when:
-      debug(f'Unable to change no-last project state')
-      sys.exit(ERR)
+    project = LogProject.last()
     project.remove()
-
-    LogProject(project.id, project.name, new_state, project.when).add()
-
-def last(kind):
-  if len(logs := db.xrange('logs', count=1, reverse=True)) == 0:
-    return FauxProject()
-
-  tsid, last = logs[0]
-  _id = UUID(last.get('project'))
-  return kind(_id, db.get('projects', _id), last.get('state', 'stopped'), parse_timestamp(tsid))
-
-def make(kind, nameorid:Any, when:datetime=now()) -> Self:
-  match nameorid:
-    case {'project': nameorid as _uuid, 'state': state} if isuuid(_uuid):
-      return LogProject(_uuid, db.get('projects', _uuid), state, when)
-    case 'last':
-      last(kind)
-    case nameorid as _uuid if isinstance(_uuid, UUID) and db.has('projects', _uuid):
-      return Project(nameorid, db.get('projects', _uuid))
-    case str(nameorid) as _uuid if isuuid(_uuid) and db.has('projects', _uuid):
-      return Project(UUID(_uuid), db.get('projects', _uuid))
-    case str(nameorid) if istimestamp_id(nameorid) and len(db.xrange('logs', start=nameorid, count=1)) == 1:
-      record = db.xrange('logs', start=nameorid, count=1)[0]
-      return Project.make(record[1], record[0])
-    case str(nameorid) as _name if db.has('projects', _name.casefold().strip()):
-      return Project.make(UUID(db.get('projects', _name.casefold().strip())))
-    case str(nameorid) as _name:
-      project = Project(uuid4(), _name)
-      project.add()
-      return project
-    case ( Project(id=_) | Project(name=_) ) as project:
-      return project
-    case None | [] | tuple() | {} | set():
-      debug(f"Project {nameorid!r} was empty.")
-      return FauxProject()
-    case _:
-      debug(msg := f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
-      raise Exception(msg)
+    project.state = new_state
+    project.add()

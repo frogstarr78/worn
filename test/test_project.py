@@ -582,7 +582,7 @@ class TestLogProject(TestWornBase):
       (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
     ]
     with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
+      with patch('lib.project.LogProject.make', side_effect=iter([p1, p2, p3])) as mock_project:
         all_projects = list(LogProject.all())
 
         self.assertEqual(mock_range.call_count, 1)
@@ -600,7 +600,7 @@ class TestLogProject(TestWornBase):
     _vuuid = uuid4()
     when = datetime.now() - timedelta(seconds=4)
     with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
+      with patch('lib.project.LogProject.make', side_effect=iter([p1, p2, p3])) as mock_project:
         all_projects = list(LogProject.all(count=9, _version=_vuuid))
 
         self.assertTrue(mock_range.called)
@@ -623,7 +623,7 @@ class TestLogProject(TestWornBase):
 #    ]
 #    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
 #      with patch('lib.db.get') as mock_get:
-#        with patch('lib.project.Project.make', side_effect=iter([p2, p3, p4])) as mock_project:
+#        with patch('lib.project.LogProject.make', side_effect=iter([p2, p3, p4])) as mock_project:
 #          r = list(LogProject.all_matching_since(p1.name, when))
 #
 #          self.assertEqual(mock_range.call_count, 1)
@@ -637,7 +637,7 @@ class TestLogProject(TestWornBase):
 #    _vuuid = uuid4()
 #    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
 #      with patch('lib.db.get') as mock_get:
-#        with patch('lib.project.Project.make', side_effect=iter([p2, p3, p4])) as mock_project:
+#        with patch('lib.project.LogProject.make', side_effect=iter([p2, p3, p4])) as mock_project:
 #          r = list(LogProject.all_matching_since(p1.name, when, _version=_vuuid))
 #
 #          self.assertEqual(mock_range.call_count, 1)
@@ -657,7 +657,7 @@ class TestLogProject(TestWornBase):
       (p2.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
     ]
     with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.project.Project.make', side_effect=iter([p1, p2])) as mock_project:
+      with patch('lib.project.LogProject.make', side_effect=iter([p1, p2])) as mock_project:
         r = list(LogProject.all_since(when - timedelta(seconds=4)))
 
         self.assertTrue(mock_range.called)
@@ -671,7 +671,7 @@ class TestLogProject(TestWornBase):
 
     _vuuid = uuid4()
     with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.project.Project.make', side_effect=iter([p1, p2])) as mock_project:
+      with patch('lib.project.LogProject.make', side_effect=iter([p1, p2])) as mock_project:
         r = LogProject.all_since(when - timedelta(seconds=4), _version=_vuuid)
 
         self.assertTrue(mock_range.called)
@@ -689,7 +689,7 @@ class TestLogProject(TestWornBase):
       (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
     ]
     with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.project.Project.make', side_effect=iter([p1, p2, p3])) as mock_project:
+      with patch('lib.project.LogProject.make', side_effect=iter([p1, p2, p3])) as mock_project:
         r = list(LogProject.all_matching(p2.name))
 
         self.assertTrue(mock_range.called)
@@ -729,7 +729,7 @@ class TestLogProject(TestWornBase):
   def test_edit_last_log_name(self): pass
   def test_edit_last_log_state(self):
     _uuid = uuid4()
-    with patch('lib.project.Project.make', side_effect=iter([Project(_uuid, 'This and that')])) as mock_project:
+    with patch('lib.project.LogProject.make', side_effect=iter([Project(_uuid, 'This and that')])) as mock_project:
       pass
 
 if __name__ == '__main__':
