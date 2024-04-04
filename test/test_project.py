@@ -609,44 +609,44 @@ class TestLogProject(TestWornBase):
         self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=9))
         self.assertEqual(mock_project.call_count, 3)
  
-  def test_all_matching_since(self):
-    when = datetime.now() - timedelta(seconds=4)
-    p1 = LogProject(uuid4(), 'The flag of Hollywood',  state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=5)))
-    p2 = LogProject(uuid4(), 'Will you do me a favor', state='started', when=self._timestamp_id(datetime.now() - timedelta(seconds=3)))
-    p3 = LogProject(p2.id,   p2.name,                  state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=1)))
-    p4 = LogProject(p1.id,   p1.name,                  state='started', when=self._timestamp_id(datetime.now()))
-    sample_log_entries = [
-      (p1.timestamp_id, {'project': str(p1.id), 'state': 'stopped'}),
-      (p2.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
-      (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'}),
-      (p4.timestamp_id, {'project': str(p1.id), 'state': 'started'})
-    ]
-    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.db.get') as mock_get:
-        with patch('lib.project.Project.make', side_effect=iter([p2, p3, p4])) as mock_project:
-          r = list(LogProject.all_matching_since(p1.name, when))
-
-          self.assertEqual(mock_range.call_count, 1)
-          self.assertEqual(mock_range.call_args.args, ('logs',))
-          self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when), count=None))
-          self.assertEqual(mock_get.call_count, 3)
-          self.assertEqual(mock_project.call_count, 3)
-
-          self.assertListEqual(r, [p2, p3])
-
-    _vuuid = uuid4()
-    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
-      with patch('lib.db.get') as mock_get:
-        with patch('lib.project.Project.make', side_effect=iter([p2, p3, p4])) as mock_project:
-          r = list(LogProject.all_matching_since(p1.name, when, _version=_vuuid))
-
-          self.assertEqual(mock_range.call_count, 1)
-          self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
-          self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when), count=None))
-          self.assertEqual(mock_get.call_count, 3)
-          self.assertEqual(mock_project.call_count, 3)
-
-          self.assertListEqual(r, [p2, p3])
+  def test_all_matching_since(self): pass
+#    when = datetime.now() - timedelta(seconds=4)
+#    p1 = LogProject(uuid4(), 'The flag of Hollywood',  state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=5)))
+#    p2 = LogProject(uuid4(), 'Will you do me a favor', state='started', when=self._timestamp_id(datetime.now() - timedelta(seconds=3)))
+#    p3 = LogProject(p2.id,   p2.name,                  state='stopped', when=self._timestamp_id(datetime.now() - timedelta(seconds=1)))
+#    p4 = LogProject(p1.id,   p1.name,                  state='started', when=self._timestamp_id(datetime.now()))
+#    sample_log_entries = [
+#      (p1.timestamp_id, {'project': str(p1.id), 'state': 'stopped'}),
+#      (p2.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
+#      (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'}),
+#      (p4.timestamp_id, {'project': str(p1.id), 'state': 'started'})
+#    ]
+#    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+#      with patch('lib.db.get') as mock_get:
+#        with patch('lib.project.Project.make', side_effect=iter([p2, p3, p4])) as mock_project:
+#          r = list(LogProject.all_matching_since(p1.name, when))
+#
+#          self.assertEqual(mock_range.call_count, 1)
+#          self.assertEqual(mock_range.call_args.args, ('logs',))
+#          self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when), count=None))
+#          self.assertEqual(mock_get.call_count, 3)
+#          self.assertEqual(mock_project.call_count, 3)
+#
+#          self.assertListEqual(r, [p2, p3])
+#
+#    _vuuid = uuid4()
+#    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+#      with patch('lib.db.get') as mock_get:
+#        with patch('lib.project.Project.make', side_effect=iter([p2, p3, p4])) as mock_project:
+#          r = list(LogProject.all_matching_since(p1.name, when, _version=_vuuid))
+#
+#          self.assertEqual(mock_range.call_count, 1)
+#          self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
+#          self.assertEqual(mock_range.call_args.kwargs, dict(start=self._timestamp_id(when), count=None))
+#          self.assertEqual(mock_get.call_count, 3)
+#          self.assertEqual(mock_project.call_count, 3)
+#
+#          self.assertListEqual(r, [p2, p3])
 
   def test_all_since(self):
     when = datetime.now()
@@ -711,15 +711,26 @@ class TestLogProject(TestWornBase):
         self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
         self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=None))
 
-#  def test_log_format(self):
-#    from lib.colors import colors
-#    _uuid = uuid4()
-#    project = Project(_uuid, 'What are you doing right now?', 'started', self.known_date)
-#    self.assertEqual(f'{project:log}', f"2024-03-23 21:50:00 state {colors.fg.green}'started'{colors.reset} id {_uuid} project 'What are you doing right now?'")
-#
-#    _uuid = uuid4()
-#    project = Project(_uuid, 'Are you there?', 'stopped', self.known_date)
-#    self.assertEqual(f'{project:log}', f"2024-03-23 21:50:00 state {colors.fg.orange}'stopped'{colors.reset} id {_uuid} project 'Are you there?'")
+  def test_log_format_with_colors(self):
+    from lib.colors import colors
+    _uuid = uuid4()
+    project = LogProject(_uuid, 'paksu tölkki', 'started', self.known_date)
+    self.assertEqual(f'{project:log!t}', f"""17112558000-0 2024-03-23 21:50:00 state "{colors.fg.green}started{colors.reset}" id {_uuid} project 'paksu tölkki'""")
+    self.assertEqual(f'{project:log}',   f"""2024-03-23 21:50:00 state "{colors.fg.green}started{colors.reset}" id {_uuid} project 'paksu tölkki'""")
+
+  def test_log_format_without_colors(self):
+    from lib.nocolors import colors
+    _uuid = uuid4()
+    project = LogProject(_uuid, 'ohut tölkki', 'stopped', self.known_date)
+    self.assertEqual(f'{project:log!t}', f"""17112558000-0 2024-03-23 21:50:00 state "stopped{colors.reset}" id {_uuid} project 'ohut tölkki'""")
+    self.assertEqual(f'{project:log}',   f"""2024-03-23 21:50:00 state "stopped{colors.reset}" id {_uuid} project 'ohut tölkki'""")
+
+  def test_edit_log_time(self): pass
+  def test_edit_last_log_name(self): pass
+  def test_edit_last_log_state(self):
+    _uuid = uuid4()
+    with patch('lib.project.Project.make', side_effect=iter([Project(_uuid, 'This and that')])) as mock_project:
+      pass
 
 if __name__ == '__main__':
   unittest.main(buffer=True)

@@ -34,6 +34,47 @@ def main() -> None:
       Project.make(p.project).rename(Project(' '.join(p.to).strip().replace('\n', ' ')))
     case Namespace(action='rm'):
       Project.make(p.project).remove()
+    case Namespace(action='start') | Namespace(action='stop'):
+      projects = Project.nearest_project_by_name(p.project)
+      if len(projects) == 1:
+        f = getattr(projects.pop(), p.action)
+      elif len(projects) == 0:
+        really_make_new = input(Prompt.CONFIRM.format(args=p))
+        res = really_make_new.strip()
+        if res == 'y':
+          project = Project.make(p.project)
+          f = getattr(project, p.action)
+        else:
+          sys.exit(UNK)
+      else:
+        n = 1
+        for _project in projects:
+          Prompt.PROJECT += f'{n}: {_project.id}: {_project.name}\n'
+          n+=1
+        try:
+          project_number = input(PROJECT_PROMPT)
+        except EOFError:
+          debug('Exiting')
+          sys.exit(OK)
+        except KeyboardInterrupt:
+          debug('Exiting')
+          sys.exit(OK)
+
+        if not ( project_number.isdigit() and project_number.isprintable() ):
+          debug('The value that you entered is not a number!')
+          sys.exit(INV)
+
+        num = int(project_number)
+        if num == 0:
+          debug('You requested to cancel. Cancelling!')
+          sys.exit(OK)
+
+        if num >= len(projects)+1:
+          debug('The number that you entered was not valid!')
+          sys.exit(INV)
+
+        f = getattr(list(projects)[num-1], p.action)
+      f(p.at)
     case Namespace(action='help', kind='dates'):
       from lib import explain_dates
       print(explain_dates())
@@ -116,47 +157,6 @@ def main() -> None:
       sys.exit(res)
     case Namespace(action='report'):
       rarg.print_help()
-    case Namespace(action='start') | Namespace(action='stop'):
-      projects = Project.nearest_project_by_name(p.project)
-      if len(projects) == 1:
-        f = getattr(projects.pop(), p.action)
-      elif len(projects) == 0:
-        really_make_new = input(Prompt.CONFIRM.format(args=p))
-        res = really_make_new.strip()
-        if res == 'y':
-          project = Project.make(p.project)
-          f = getattr(project, p.action)
-        else:
-          sys.exit(UNK)
-      else:
-        n = 1
-        for _project in projects:
-          Prompt.PROJECT += f'{n}: {_project.id}: {_project.name}\n'
-          n+=1
-        try:
-          project_number = input(PROJECT_PROMPT)
-        except EOFError:
-          debug('Exiting')
-          sys.exit(OK)
-        except KeyboardInterrupt:
-          debug('Exiting')
-          sys.exit(OK)
-
-        if not ( project_number.isdigit() and project_number.isprintable() ):
-          debug('The value that you entered is not a number!')
-          sys.exit(INV)
-
-        num = int(project_number)
-        if num == 0:
-          debug('You requested to cancel. Cancelling!')
-          sys.exit(OK)
-
-        if num >= len(projects)+1:
-          debug('The number that you entered was not valid!')
-          sys.exit(INV)
-
-        f = getattr(list(projects)[num-1], p.action)
-      f(p.at)
     case _:
       parg.print_help()
   sys.exit(OK)

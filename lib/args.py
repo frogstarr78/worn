@@ -80,7 +80,7 @@ def _datetime(dtin:str | datetime) -> datetime:
       '''parse a date'''
       return datetime.strptime(dtin, '%Y-%m-%d')
 
-def parse_args(argv=sys.argv) -> argparse.Namespace:
+def parse_args(argv=sys.argv[1:]) -> argparse.Namespace:
   from .colors import colors
   p = argparse.ArgumentParser(description=f'{colors.underline}W{colors.reset}orking {colors.underline}o{colors.reset}n {colors.underline}R{colors.reset}ight {colors.underline}N{colors.reset}ow', formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
 

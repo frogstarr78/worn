@@ -6,11 +6,11 @@ from typing import Generator
 class Project(object):
   __match_args__ = ("id","name")
 
-  def __init__(self, _id:UUID, name:str, /, state:str='stopped', when:datetime=now()):
-    if isuuid(_id) and isuuid(name):
-      raise Exception(f'Attempting to set the project id {self.id!r} to a uuid bad project name {self.name!r}!')
+  def __init__(self, id:UUID, name:str, /, state:str='stopped', when:datetime=now()):
+    if isuuid(id) and isuuid(name):
+      raise Exception(f'Attempting to set the project id {id!r} to a uuid bad project name {name!r}!')
 
-    self.id = _id
+    self.id = id
     self.name = name
     self.state = state
     self.when = when
@@ -76,7 +76,7 @@ class Project(object):
 
     db.add('begun', now().timestamp(), expire=3600, nx=True)
 
-    Project.make('last').stop(at=at)
+    last(self.__class__).stop(at=at)
     self.log('started', at)
 
   def rename(self, new) -> None:
@@ -93,41 +93,6 @@ class Project(object):
 
     db.rm('projects', self.name.casefold().strip())
     db.rm('projects', self.id)
-
-  @classmethod
-  def make(kind, nameorid:Any, when:datetime=now()) -> Self:
-    match nameorid:
-      case {'project': nameorid as _uuid, 'state': state} if isuuid(_uuid):
-        return LogProject(_uuid, db.get('projects', _uuid), state, when)
-#      case {'project': nameorid as _uuid} if isuuid(_uuid):
-#        return LogProject(_uuid, db.get('projects', _uuid), nameorid.get('state'), when)
-      case 'last' if len(db.xrange('logs', count=1, reverse=True)) == 0:
-        return FauxProject()
-      case 'last':
-        tsid, last = db.xrange('logs', count=1, reverse=True)[0]
-        _id = UUID(last.get('project'))
-        return Project(_id, db.get('projects', _id), last.get('state', 'stopped'), parse_timestamp(tsid))
-      case nameorid as _uuid if isinstance(_uuid, UUID) and db.has('projects', _uuid):
-        return Project(nameorid, db.get('projects', _uuid))
-      case str(nameorid) as _uuid if isuuid(_uuid) and db.has('projects', _uuid):
-        return Project(UUID(_uuid), db.get('projects', _uuid))
-      case str(nameorid) if istimestamp_id(nameorid) and len(db.xrange('logs', start=nameorid, count=1)) == 1:
-        record = db.xrange('logs', start=nameorid, count=1)[0]
-        return Project.make(record[1], record[0])
-      case str(nameorid) as _name if db.has('projects', _name.casefold().strip()):
-        return Project.make(UUID(db.get('projects', _name.casefold().strip())))
-      case str(nameorid) as _name:
-        project = Project(uuid4(), _name)
-        project.add()
-        return project
-      case ( Project(id=_) | Project(name=_) ) as project:
-        return project
-      case None | [] | tuple() | {} | set():
-        debug(f"Project {nameorid!r} was empty.")
-        return FauxProject()
-      case _:
-        debug(msg := f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
-        raise Exception(msg)
 
   @classmethod
   def nearest_project_by_name(kind, name:str) -> set[str]:
@@ -181,7 +146,7 @@ class FauxProject(Project):
     raise Exception(f'You attempted to add a fake project to the database. This is merely a placeholder class/instance and is not meant to be operated on.')
 
 class LogProject(Project):
-  def __init__(self, id:UUID, name:str, state:str='stopped', when:str=''):
+  def __init__(self, id:UUID, name:str, /, state:str='stopped', when:str | datetime=''):
 #    if not istimestamp_id(when):
 #      raise Exception(f'The supplied when value {when!r} was not a valid timestamp id')
 
@@ -204,9 +169,9 @@ class LogProject(Project):
 #    return int(self.timestamp_id.replace('-', ''))
     return hash(self.id)
 #
-  def __format__(self, fmt_spec:Any):
+  def __format__(self, fmt_spec:Any) -> str:
     match fmt_spec:
-      case 'log!t': return f'{str(self.when.timestamp()).replace(".", ""): >13}-{self.serial} {parse_timestamp(self.when).isoformat(" ", timespec="seconds")} state "{self.is_running() and colors.fg.green or colors.fg.orange}{self.state}{colors.reset}" id {self.id} project {self.name!r}'
+      case 'log!t': return f'{str(self.when.timestamp()).replace(".", "")}-{self.serial} {super().__format__("log")}'
       case _:       return super().__format__(fmt_spec)
 
   def add(self) -> None:
@@ -281,7 +246,7 @@ class LogProject(Project):
   @classmethod
   def edit_last_log_name(kind, new_name:str) -> None:
     last = Project.make('last')
-    project = LogProject.all_since(at, count=1)[0]
+    project = LogProject.all_since(last.when, count=1)[0]
     if project != last or project.when != last.when:
       debug(f'Unable to change no-last project state')
       sys.exit(ERR)
@@ -293,10 +258,46 @@ class LogProject(Project):
   @classmethod
   def edit_last_log_state(kind, new_state:str) -> None:
     last = Project.make('last')
-    project = LogProject.all_since(at, count=1)[0]
+    project = LogProject.all(last.when, count=1)[0]
     if project != last or project.when != last.when:
       debug(f'Unable to change no-last project state')
       sys.exit(ERR)
     project.remove()
 
     LogProject(project.id, project.name, new_state, project.when).add()
+
+def last(kind):
+  if len(logs := db.xrange('logs', count=1, reverse=True)) == 0:
+    return FauxProject()
+
+  tsid, last = logs[0]
+  _id = UUID(last.get('project'))
+  return kind(_id, db.get('projects', _id), last.get('state', 'stopped'), parse_timestamp(tsid))
+
+def make(kind, nameorid:Any, when:datetime=now()) -> Self:
+  match nameorid:
+    case {'project': nameorid as _uuid, 'state': state} if isuuid(_uuid):
+      return LogProject(_uuid, db.get('projects', _uuid), state, when)
+    case 'last':
+      last(kind)
+    case nameorid as _uuid if isinstance(_uuid, UUID) and db.has('projects', _uuid):
+      return Project(nameorid, db.get('projects', _uuid))
+    case str(nameorid) as _uuid if isuuid(_uuid) and db.has('projects', _uuid):
+      return Project(UUID(_uuid), db.get('projects', _uuid))
+    case str(nameorid) if istimestamp_id(nameorid) and len(db.xrange('logs', start=nameorid, count=1)) == 1:
+      record = db.xrange('logs', start=nameorid, count=1)[0]
+      return Project.make(record[1], record[0])
+    case str(nameorid) as _name if db.has('projects', _name.casefold().strip()):
+      return Project.make(UUID(db.get('projects', _name.casefold().strip())))
+    case str(nameorid) as _name:
+      project = Project(uuid4(), _name)
+      project.add()
+      return project
+    case ( Project(id=_) | Project(name=_) ) as project:
+      return project
+    case None | [] | tuple() | {} | set():
+      debug(f"Project {nameorid!r} was empty.")
+      return FauxProject()
+    case _:
+      debug(msg := f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
+      raise Exception(msg)

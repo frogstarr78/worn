@@ -184,7 +184,7 @@ class TestReport(TestWornBase):
           self.assertTrue(csv_fmt.called)
           self.assertEqual(csv_fmt.call_count, 1)
 
-        self.assertIn('<lib.report.Report object at 0x7', '{r!s}')
+        self.assertIn('<lib.report.Report object at 0x7', f'{r!s}')
 
     def test_format_simple(self):
       with patch.object(Project, 'make', return_value=Project(5, 'Ima sneeky thing', 'stopped')) as fake_last_not_running:
