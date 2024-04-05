@@ -42,12 +42,29 @@ class TestLib(TestWornBase):
       self.assertIsInstance(r, datetime)
       self.assertEqual(r, datetime(1999, 12, 30, 0, 0, 0))
 
-  def test_datetime_days_ago(self):
-    with patch('lib.now', return_value=datetime(1999, 12, 31, 23, 59, 59, 999)) as not_now:
-      r = _datetime('5 days ago')
+  def test_datetime_time_ago_exceptions(self):
+    with self.assertRaises(Exception):
+      r = _datetime('7 parsecs ago')
+
+    with self.assertRaises(Exception):
+      r = _datetime('n minutes ago')
+
+    with self.assertRaises(Exception):
+      r = _datetime('n minutes ago')
+
+  def test_datetime_hours_ago(self):
+    with patch('lib.now', return_value=datetime(2000, 4, 5, 0, 38, 54, 999)) as not_now:
+      r = _datetime('7 hours ago')
       self.assertEqual(not_now.call_count, 1)
       self.assertIsInstance(r, datetime)
-      self.assertEqual(r, datetime(1999, 12, 26, 0, 0, 0))
+      self.assertEqual(r, datetime(2000, 4, 4, 17, 38, 54, 999))
+
+  def test_datetime_days_ago(self):
+    with patch('lib.now', return_value=datetime(1999, 12, 31, 23, 59, 59, 999)) as not_now:
+      r = _datetime('3 days ago')
+      self.assertEqual(not_now.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 28, 23, 59, 59, 999))
 
   def test_datetime_weekdays(self):
     with patch('lib.now', return_value=datetime(1999, 12, 31, 23, 59, 59, 999)) as not_now:
@@ -181,7 +198,7 @@ class TestLib(TestWornBase):
   def test_datetime_last(self):
     _when = datetime.now()
     _proj = lib.project.Project(uuid4(), 'I was last', state='stopped', when=_when)
-    with patch.object(lib.project.Project, 'make', return_value=_proj) as mock:
+    with patch.object(lib.project.Project, 'last', return_value=_proj) as mock:
       r = _datetime('last')
       self.assertEqual(mock.call_count, 1)
       self.assertEqual(r, _when)

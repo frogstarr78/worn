@@ -1,7 +1,7 @@
 import lib
 import sys
 from uuid import uuid4, UUID
-from lib import debug, isuuid, istimestamp_id, parse_timestamp, SECOND, MINUTE, HOUR, DAY, WEEK
+from lib import debug, isuuid, istimestamp_id, isfloat, parse_timestamp, SECOND, MINUTE, HOUR, DAY, WEEK
 import argparse
 from lib.project import Project
 from datetime import datetime, timedelta
@@ -29,17 +29,24 @@ def _datetime(dtin:str | datetime) -> datetime:
 
   dtin = dtin.strip().casefold()
   match dtin:
-    case 'last':      return Project.make('last').when
+    case 'last':      return Project.last().when
     case 'now':       return lib.now()
     case 'today':     return datetime.strptime(f'{lib.now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S')
     case 'yesterday': return datetime.strptime(f'{lib.now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=1)
     case _ if dtin.isdigit() or istimestamp_id(dtin):
       '''"parse" a timestamp or redis stream id'''
       return parse_timestamp(dtin)
-    case _ if dtin.endswith('days ago'):
-      '''"parse" a "yesterday"'''
-      num_days = int(dtin.split(' ')[0])
-      return datetime.strptime(f'{lib.now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=num_days)
+    case _ if dtin.endswith(' ago') and dtin.count(' ') == 2:
+      '''"parse" some time ago'''
+      num_time, num_scale, _ = dtin.split(' ')
+
+      if num_scale not in ['weeks', 'days', 'hours', 'minutes', 'seconds']:
+        raise Exception(f'Provided scale {num_scale} is invalid.')
+
+      if not num_time.isdigit() or isfloat(num_time):
+        raise Exception(f'Provided time {num_time} is invalid.')
+
+      return lib.now() - timedelta(**{num_scale: int(num_time)})
     case _ if dtin in weekdays:
       '''"parse" a weekday'''
       _now = lib.now()

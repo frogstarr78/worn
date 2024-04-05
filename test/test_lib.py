@@ -1,6 +1,27 @@
 from test import *
 
 class TestLib(TestWornBase):
+  def test_isfloat(self):
+    from lib import isfloat
+    self.assertFalse(isfloat(''))
+    self.assertFalse(isfloat('n'))
+    self.assertFalse(isfloat('n.m'))
+    self.assertFalse(isfloat('1.m'))
+    self.assertFalse(isfloat('n.3'))
+    self.assertFalse(isfloat('5'))
+    self.assertFalse(isfloat(b'1'))
+    self.assertFalse(isfloat(b'0.m'))
+    self.assertFalse(isfloat(9))
+    self.assertFalse(isfloat(True))
+    self.assertTrue(isfloat(8384235.39434321))
+    self.assertTrue(isfloat('1.1'))
+    self.assertTrue(isfloat('1.0'))
+    self.assertTrue(isfloat(b'1.1'))
+    self.assertTrue(isfloat(b'0.1'))
+    self.assertTrue(isfloat('5.3444'))
+    self.assertTrue(isfloat(b'8384235.39434321'))
+    self.assertTrue(isfloat(b'8384235.2'))
+
   def test_isuuid(self):
     from lib import isuuid
     self.assertTrue(isuuid(uuid4()))
@@ -59,7 +80,6 @@ class TestLib(TestWornBase):
     self.assertEqual(3600,   HOUR)
     self.assertEqual(86400,  DAY)
     self.assertEqual(604800, WEEK)
-
 
   def test_parse_timestamp(self):
     from lib import parse_timestamp
@@ -123,7 +143,6 @@ class TestLib(TestWornBase):
 
     with self.assertRaises(Exception):
       parse_timestamp(range(0, 4))
-
 
   def test_explain_dates(self):
     from lib import explain_dates

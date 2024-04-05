@@ -19,8 +19,14 @@ def isuuid(s:str) -> bool:
   elif isinstance(s, (tuple, list)) and len(s) == 1: return isuuid(s[0])
   else: return False
 
-def istimestamp_id(s:str):
+def istimestamp_id(s:str) -> bool:
   return isinstance(s, str) and re.search(r'^\d{10,13}-(\d+|\*)$', s)
+
+def isfloat(s:str) -> bool:
+  if isinstance(s, float): return True
+  if isinstance(s, bytes): return s.count(b'.') == 1 and all(_.isdigit() for _ in s.split(b'.'))
+  if isinstance(s, str):   return s.count('.')  == 1 and all(_.isdigit() for _ in s.split('.'))
+  return False
 
 def parse_timestamp(tsin):
   if isinstance(tsin, (int, float)):

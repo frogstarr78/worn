@@ -283,17 +283,3 @@ class LogProject(Project):
       else:
         _log = LogProject(log.id, log.name, log.state, log.when)
         _log.log(log.state, log.when)
-
-  @classmethod
-  def edit_last_log_name(kind, new_name:str) -> None:
-    project = LogProject.last()
-    project.remove()
-    project.name = new_name
-    project.add()
-
-  @classmethod
-  def edit_last_log_state(kind, new_state:str) -> None:
-    project = LogProject.last()
-    project.remove()
-    project.state = new_state
-    project.add()
