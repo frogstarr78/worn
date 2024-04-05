@@ -84,7 +84,7 @@ def main() -> None:
     case Namespace(action='help'):
       parg.print_help()
     case Namespace(action='show', display='last') | Namespace(action='stat'):
-      print(f'{Project.make("last"):last}')
+      print(f'{Project.last():last}')
     case Namespace(action='show', display='id'):
       print(Project.make(p.project))
     case Namespace(action='show', display='projects'):
@@ -115,17 +115,21 @@ def main() -> None:
         print(f'{log:{fmt}}'.format(log))
     case Namespace(action='show'):
       sharg.print_help()
-    case Namespace(action='edit', to=to, reason=None):
-        debug('You are required to provide a reason when changing the time of an entry. Please retry the last command while adding a -r|--reason argument.')
-        sys.exit(ERR)
+    case Namespace(action='edit', to=None, project=None, state=new_state) if (project := LogProject.last()).state != new_state:
+      project.remove()
+      project.state =  new_state
+      project.add()
+    case Namespace(action='edit', to=None, project=new_name,  state=None) if (project := LogProject.last()).name != new_name:
+      project.remove()
+      project.name =  new_name
+      project.add()
+    case Namespace(action='edit', to=to, reason=str(reason), project=None, state=None):
+      LogProject.edit_log_time(since, to, reason)
     case Namespace(action='edit', to=to, reason=[reason]) | Namespace(action='edit', to=to, reason=[*reason]):
       LogProject.edit_log_time(since, to, ' '.join(reason))
-    case Namespace(action='edit', to=to, reason=str(reason)):
-      LogProject.edit_log_time(since, to, reason)
-    case Namespace(action='edit', since=at, state=new_state):
-      LogProject.edit_last_log_state(new_state)
-    case Namespace(action='edit', since=at, project=new_name):
-      LogProject.edit_last_log_name(new_name)
+    case Namespace(action='edit', to=to, reason=None):
+      debug('You are required to provide a reason when changing the time of an entry. Please retry the last command while adding a -r|--reason argument.')
+      sys.exit(ERR)
     case Namespace(action='edit'):
       earg.print_help()
     case Namespace(action='report', project=None, since=None, ticket=None, mailto=None):
