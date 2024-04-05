@@ -30,7 +30,7 @@ class TestWornBase(unittest.TestCase):
   def tearDown(self): pass
 
   def _timestamp_id(self, ts, seq='0'):
-    if isinstance(ts, datetime):    return '''{ts:0<13}-{seq}'''.format(ts=str(ts.timestamp()).replace('.', '')[:13], seq=seq)
+    if isinstance(ts, datetime):    return '''{ts:0}-{seq}'''.format(ts=str(ts.timestamp()).replace('.', ''), seq=seq)
     if isinstance(ts, str):         return self._timestamp_id(datetime.fromtimestamp(float(ts)).seq)
     if isinstance(ts, int | float): return self._timestamp_id(datetime.fromtimestamp(ts), seq)
     else: raise Exception(f'Unknown timestamp {ts!r} type {type(ts)!r}.')
