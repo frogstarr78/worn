@@ -6,6 +6,8 @@ from urllib.parse import urlparse
 import re, io
 from typing import *
 
+class InvalidTypeE(Exception): pass
+
 def debug(*msgs) -> None:
   for m in msgs:
     print(m, file=sys.stderr)
@@ -13,20 +15,29 @@ def debug(*msgs) -> None:
 def now():
   return datetime.now()
 
-def isuuid(s:str) -> bool:
-  if isinstance(s, UUID): return True
-  elif isinstance(s, str): return re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', s)
-  elif isinstance(s, (tuple, list)) and len(s) == 1: return isuuid(s[0])
-  else: return False
+def isuuid(s:Any) -> bool:
+  match s:
+    case str():                           return re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', s)
+    case tuple() | list() if len(s) == 1: return isuuid(s[0])
+    case _ if isinstance(s, UUID):        return True
+    case _:                               return False
+
+def stream_id(ts:datetime | str, seq='*'):
+  match ts:
+    case int() | str() | bytes():       return stream_id(datetime.fromtimestamp(float(ts)), seq)
+    case float():                       return stream_id(datetime.fromtimestamp(ts), seq)
+    case _ if isinstance(ts, datetime): return f'{ts:%s%f}-{seq}'
+    case _:                             raise InvalidTypeE(f'Unknown timestamp {ts!r} type {type(ts)!r}.')
 
 def istimestamp_id(s:str) -> bool:
-  return isinstance(s, str) and re.search(r'^\d{10,13}-(\d+|\*)$', s)
+  return isinstance(s, str) and re.search(r'^\d+-(\d+|\*)$', s)
 
 def isfloat(s:str) -> bool:
-  if isinstance(s, float): return True
-  if isinstance(s, bytes): return s.count(b'.') == 1 and all(_.isdigit() for _ in s.split(b'.'))
-  if isinstance(s, str):   return s.count('.')  == 1 and all(_.isdigit() for _ in s.split('.'))
-  return False
+  match s:
+    case float(): return True
+    case bytes(): return s.count(b'.') == 1 and all(_.isdigit() for _ in s.split(b'.'))
+    case str():   return s.count('.')  == 1 and all(_.isdigit() for _ in s.split('.'))
+    case _:       return False
 
 def parse_timestamp(tsin):
   if isinstance(tsin, (int, float)):

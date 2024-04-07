@@ -24,7 +24,7 @@ class TestFauxProject(TestWornBase):
     with self.assertRaises(Project.FauxProjectE):
       faux.stop(now())
 
-    with self.assertRaises(Project.InvalidTypeE):
+    with self.assertRaises(Project.FauxProjectE):
       faux.rename('rumplestilskin')
 
 if __name__ == '__main__':

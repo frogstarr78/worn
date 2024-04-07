@@ -46,22 +46,22 @@ class TestLib(TestWornBase):
 
   def test_istimestamp_id(self):
     from lib import istimestamp_id
-    time = str(datetime.now().timestamp()).replace('.', '')
-    self.assertTrue(istimestamp_id(f'{time[:10]:0<13}-*'), msg=f'"{time[:10]:0<13}-*" was not considered a valid timestamp id.')
-    self.assertTrue(istimestamp_id(f'{time[:11]:0<13}-*'), msg=f'"{time[:10]:0<13}-*" was not considered a valid timestamp id.')
-    self.assertTrue(istimestamp_id(f'{time[:12]:0<13}-*'), msg=f'"{time[:10]:0<13}-*" was not considered a valid timestamp id.')
-    self.assertTrue(istimestamp_id(f'{time[:13]:0<13}-*'), msg=f'"{time[:10]:0<13}-*" was not considered a valid timestamp id.')
-    self.assertTrue(istimestamp_id(f'{time[:10]:0<13}-0'), msg=f'"{time[:10]:0<13}-*" was not considered a valid timestamp id.')
-    self.assertTrue(istimestamp_id(f'{time[:11]:0<13}-0'), msg=f'"{time[:10]:0<13}-*" was not considered a valid timestamp id.')
-    self.assertTrue(istimestamp_id(f'{time[:12]:0<13}-0'), msg=f'"{time[:10]:0<13}-*" was not considered a valid timestamp id.')
-    self.assertTrue(istimestamp_id(f'{time[:13]:0<13}-0'), msg=f'"{time[:10]:0<13}-*" was not considered a valid timestamp id.')
-    self.assertTrue(istimestamp_id(f'{time[:13]:0<13}-11111111111'), msg=f'"{time[:10]:0<13}-11111111111" was not considered a valid timestamp id.')
+    time = f'{datetime.now():%s%f}'
+    self.assertTrue(istimestamp_id(f'{time[:10]}-*'), msg=f'"{time[:10]}-*" was not considered a valid timestamp id.')
+    self.assertTrue(istimestamp_id(f'{time[:11]}-*'), msg=f'"{time[:11]}-*" was not considered a valid timestamp id.')
+    self.assertTrue(istimestamp_id(f'{time[:12]}-*'), msg=f'"{time[:12]}-*" was not considered a valid timestamp id.')
+    self.assertTrue(istimestamp_id(f'{time[:13]}-*'), msg=f'"{time[:13]}-*" was not considered a valid timestamp id.')
+    self.assertTrue(istimestamp_id(f'{time[:10]}-0'), msg=f'"{time[:10]}-*" was not considered a valid timestamp id.')
+    self.assertTrue(istimestamp_id(f'{time[:11]}-0'), msg=f'"{time[:11]}-*" was not considered a valid timestamp id.')
+    self.assertTrue(istimestamp_id(f'{time[:12]}-0'), msg=f'"{time[:12]}-*" was not considered a valid timestamp id.')
+    self.assertTrue(istimestamp_id(f'{time[:13]}-0'), msg=f'"{time[:13]}-*" was not considered a valid timestamp id.')
+    self.assertTrue(istimestamp_id(f'{time[:13]}-11111111111'), msg=f'"{time[:13]}-11111111111" was not considered a valid timestamp id.')
+    self.assertTrue(istimestamp_id(f'{time[:14]}-0'), msg=f'"{time[:14]}-0" was considered a valid timestamp id when it should not have been.')
+    self.assertTrue(istimestamp_id(f'{time[:14]}-*'), msg=f'"{time[:14]}-*" was considered a valid timestamp id when it should not have been.')
 
-    self.assertFalse(istimestamp_id(f'{time[:13]:0<13}0-0'), msg=f'"{time[:13]:0<13}0-0" was considered a valid timestamp id when it should not have been.')
-    self.assertFalse(istimestamp_id(f'{time[:13]:0<13}0-*'), msg=f'"{time[:13]:0<13}0-*" was considered a valid timestamp id when it should not have been.')
-    self.assertFalse(istimestamp_id(f'{time[:13]:0<13}0-r'), msg=f'"{time[:13]:0<13}0-r" was considered a valid timestamp id when it should not have been.')
-    self.assertFalse(istimestamp_id(f'{time[:13]:0<13}0-1o1'), msg=f'"{time[:13]:0<13}0-1o1" was considered a valid timestamp id when it should not have been.')
-    self.assertFalse(istimestamp_id(f'{time[:13]:0<13}0-o1o'), msg=f'"{time[:13]:0<13}0-o1o" was considered a valid timestamp id when it should not have been.')
+    self.assertFalse(istimestamp_id(f'{time[:10]}-r'), msg=f'"{time[:10]}-r" was considered a valid timestamp id when it should not have been.')
+    self.assertFalse(istimestamp_id(f'{time[:10]}-1o1'), msg=f'"{time[:10]}-1o1" was considered a valid timestamp id when it should not have been.')
+    self.assertFalse(istimestamp_id(f'{time[:10]}-o1o'), msg=f'"{time[:10]}-o1o" was considered a valid timestamp id when it should not have been.')
 
     time = datetime.now().timestamp()
     self.assertFalse(istimestamp_id(time),      msg=f'"{time}" was considered a valid timestamp id when it should not have been.')
@@ -152,6 +152,16 @@ class TestLib(TestWornBase):
     self.assertIn('redis stream timestamp', explain_dates())
     self.assertIn('examples: "10:31", "22:22", etc', explain_dates())
     self.assertIn('examples: "2024-03-14"', explain_dates())
+
+  def test_stream_id(self):
+    from lib import stream_id, InvalidTypeE
+    self.assertEqual(stream_id(self.known_date), f'{self.known_date:%s%f}-*')
+    self.assertEqual(stream_id(self.known_date.timestamp()), f'{self.known_date:%s%f}-*')
+    self.assertEqual(stream_id(str(self.known_date.timestamp())), f'{self.known_date:%s%f}-*')
+    self.assertEqual(stream_id(int(self.known_date.timestamp())), f'{self.known_date:%s%f}-*')
+
+    with self.assertRaises(InvalidTypeE):
+      stream_id(['not', 'a', 'stream', 'id'])
 
 if __name__ == '__main__':
   unittest.main(buffer=True)

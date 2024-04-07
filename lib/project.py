@@ -190,8 +190,8 @@ class FauxProject(Project):
   def log(self, state, at):
     raise Project.FauxProjectE(f'You attempted to log a fake project to the database. This is merely a placeholder class/instance and is not meant to be operated on.')
 
-  def rename(self, name):
-    raise InvalidTypeE(f"Project {new!r} is the wrong type {type(new)!r}.")
+  def rename(self, new):
+    raise Project.FauxProjectE(f"Project {new!r} is the wrong type {type(new)!r}.")
 
 class LogProject(Project):
   def __init__(self, id:UUID, name:str, /, state:str='stopped', when:str | datetime=''):
@@ -199,17 +199,18 @@ class LogProject(Project):
 #      raise Project.InvalidTimeE(f'The supplied when value {when!r} was not a valid timestamp id')
 
     super().__init__(id, name, state, parse_timestamp(when))
+    self._stored = None
     if istimestamp_id(when):
       if when.endswith('*'):
-        self.serial = 0
+        self._stored = False
+        self.serial = '*'
       else:
         self.serial = int(when.split('-')[1])
     elif isinstance(when, str) and when.isdigit():
       self.serial = 0
     else:
       self.serial = 0
-    self.timestamp_id = f'{str(self.when.timestamp()).replace(".", "")}-{self.serial}'
-#    self.timestamp_id = f'{str(self.when.timestamp()).replace(".", "")[:13]}-{self.serial}'
+    self.timestamp_id = stream_id(self.when, self.serial)
 
   def __str__(self):
     return f'<LogProject hash:{hash(self): >20} id: {str(self.id)!r} state: {self.state!r} timestamp_id: {self.timestamp_id: >16} serial: {self.serial: >3} when: "{self.when:%a %F %T}" name: {db.get("projects", self.id)!r}>'
@@ -235,17 +236,17 @@ class LogProject(Project):
         return
 
     db.add('logs', {'project': self.id, 'state': self.state, 'id': self.timestamp_id})
+    self._stored = True
 
   def remove(self) -> None:
     db.rm('logs', self.timestamp_id)
 
-  def rename(self, name):
+  def rename(self, new):
     raise Project.InvalidTypeE(f"Project {new!r} is the wrong type {type(new)!r}.")
 
   @classmethod
   def all_matching_since(kind, matching:str, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:
-    _ts = str(parse_timestamp(since).timestamp()).replace('.', '')[:13]
-    start = f'{_ts.lstrip():0<13}-0'
+    start = stream_id(parse_timestamp(since), seq='0')
 
     key = 'logs'
     if _version is not None:
@@ -256,14 +257,13 @@ class LogProject(Project):
 
   @classmethod
   def all_since(kind, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:
-    _ts = str(parse_timestamp(since).timestamp()).replace('.', '')[:13]
-    start = f'{_ts.lstrip():0<13}-0'
+    start = stream_id(parse_timestamp(since), seq='0')
 
     key = 'logs'
     if _version is not None:
       key = f'logs-{str(_version)}'
 
-    return (Project.make(project, when=tid) for (tid, project) in db.xrange(key, start=start, count=count))
+    return (LogProject.make(project, when=tid) for (tid, project) in db.xrange(key, start=start, count=count))
 
   @classmethod
   def all_matching(kind, matching:str, count:int=None, _version:str | UUID=None) -> Generator:
