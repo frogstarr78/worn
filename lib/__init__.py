@@ -6,7 +6,9 @@ from urllib.parse import urlparse
 import re, io
 from typing import *
 
-class InvalidTypeE(Exception): pass
+class BaseException(Exception): pass
+class InvalidTimeE(BaseException): pass
+class InvalidTypeE(BaseException): pass
 
 def debug(*msgs) -> None:
   for m in msgs:
@@ -40,44 +42,45 @@ def isfloat(s:str) -> bool:
     case _:       return False
 
 def parse_timestamp(tsin):
-  if isinstance(tsin, (int, float)):
-    return datetime.fromtimestamp(tsin)
-  elif isinstance(tsin, datetime):
-    return tsin
-  elif isinstance(tsin, list):
-    return parse_timestamp(' '.join(tsin))
-  elif isinstance(tsin, str):
-    if '-' in tsin:
-      '''Do we have something that looks like a redis stream id or date?'''
-
-      if tsin.count('-') == 1:
-        '''This is intended to extract the timestamp out of a redis stream id'''
-        return parse_timestamp(tsin[:tsin.index('-')])
-      else:
-        try:
-          return datetime.strptime(tsin, '%Y-%m-%d %H:%M:%S')
-        except:
-          return datetime.strptime(tsin, '%a %Y-%m-%d %H:%M:%S')
-
-    elif tsin.count('.') > 1:
-      raise Exception('Invalid timestamp {tsin!r} supplied.')
-
-    elif len(tsin) >= 13:
-      if '.' in tsin[:11]:
-        '''Possible truncation happening here'''
+  match tsin:
+    case int() | float():
+      return datetime.fromtimestamp(float(tsin))
+    case list():
+      return parse_timestamp(' '.join(tsin))
+    case str():
+      if len(tsin) == 0:
+        raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
+      elif tsin.isdigit():
+        if len(tsin) < 10:
+          raise InvalidTypeE(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
+        elif len(tsin) >= 10:
+          return parse_timestamp(float('.'.join([tsin[:10], tsin[10:]])))
+      elif tsin.count('.') > 1:
+        raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
+      elif tsin.count('.') == 1:
         ts, mils = tsin.split('.')
-        if ts.isdigit() and mils.isdigit():
-          return parse_timestamp(float('.'.join([ts[:10], mils])))
+        if len(ts) > 10:
+          raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
         else:
-          raise Exception(f'Invalid timestamp {tsin!r} supplied.')
+          if ts.isdigit() and mils.isdigit():
+            return parse_timestamp(float('.'.join([ts, mils])))
+          else:
+            raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
+      elif '-' in tsin:
+        '''Do we have something that looks like a redis stream id or date?'''
+
+        if tsin.count('-') == 1:
+          return parse_timestamp(tsin[:tsin.index('-')])
+        elif tsin.count(' ') == 2:
+          return datetime.strptime(tsin, '%a %Y-%m-%d %H:%M:%S')
+        elif tsin.count(' ') == 1:
+          return datetime.strptime(tsin, '%Y-%m-%d %H:%M:%S')
       else:
-        return parse_timestamp(float('.'.join([tsin[:10], f'{tsin[10:]:>06}'])))
-    elif 10 <= len(tsin) < 13:
-      return parse_timestamp(float('.'.join([tsin[:10], f'{tsin[10:]:>06}'])))
-    else:
-      raise Exception(f'Invalid timestamp {tsin!r} supplied.')
-  else:
-    raise Exception(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
+        raise InvalidTypeE(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
+    case _ if isinstance(tsin, datetime):
+      return tsin
+    case _:
+      raise InvalidTypeE(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
 
 def explain_dates():
     msg = '''The system should know how to parse these custom pseudo-values and formats.

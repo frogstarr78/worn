@@ -8,9 +8,7 @@ class Project(object):
 
   class BaseException(Exception): pass
   class InvalidIDE(BaseException): pass
-  class InvalidTypeE(BaseException): pass
   class FauxProjectE(BaseException): pass
-  class InvalidTimeE(BaseException): pass
 
   def __init__(self, id:UUID, name:str, /, state:str='stopped', when:datetime=now()):
     if isuuid(id) and isuuid(name):
@@ -64,7 +62,7 @@ class Project(object):
     db.add('projects', {self.name.casefold().strip(): self.id, self.id: self.name.strip()}, nx=True)
 
   def rename(self, new:Self) -> None:
-    if not isinstance(new, Project): raise Project.InvalidTypeE(f'Rename argument new {new} is an invalid type {type(new)}.')
+    if not isinstance(new, Project): raise InvalidTypeE(f'Rename argument new {new} is an invalid type {type(new)}.')
 
     db.add('projects', {self.id: new.name})
     db.rm('projects', self.name.casefold())
@@ -128,7 +126,7 @@ class Project(object):
         return FauxProject()
       case _:
         debug(msg := f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
-        raise Project.InvalidTypeE(msg)
+        raise InvalidTypeE(msg)
 
   @classmethod
   def nearest_project_by_name(kind, name:str) -> set[str]:
@@ -194,22 +192,17 @@ class FauxProject(Project):
     raise Project.FauxProjectE(f"Project {new!r} is the wrong type {type(new)!r}.")
 
 class LogProject(Project):
-  def __init__(self, id:UUID, name:str, /, state:str='stopped', when:str | datetime=''):
-#    if not istimestamp_id(when):
-#      raise Project.InvalidTimeE(f'The supplied when value {when!r} was not a valid timestamp id')
-
+  def __init__(self, id:UUID, name:str, /, state:str='stopped', when:str | datetime=None):
     super().__init__(id, name, state, parse_timestamp(when))
-    self._stored = None
+    self._stored = False
     if istimestamp_id(when):
       if when.endswith('*'):
-        self._stored = False
         self.serial = '*'
       else:
         self.serial = int(when.split('-')[1])
-    elif isinstance(when, str) and when.isdigit():
-      self.serial = 0
+        self._stored = True
     else:
-      self.serial = 0
+      self.serial = '*'
     self.timestamp_id = stream_id(self.when, self.serial)
 
   def __str__(self):
@@ -224,14 +217,13 @@ class LogProject(Project):
       case _:       return super().__format__(fmt_spec)
 
   def add(self) -> None:
-    at = self.when
     if db.has('logs'):
       oldest_log = parse_timestamp(db.xinfo('logs', 'last-generated-id', default=now()))
-      if at < oldest_log:
-        raise Project.InvalidTimeE(f'The start time that you specified "{at:%F %T}" is older than the last log entered. Please, choose a different time or adjust the previously entered log entry time "{oldest_log:%F %T}".')
+      if self.when < oldest_log:
+        raise InvalidTimeE(f'The start time that you specified "{self.when:%F %T}" is older than the last log entered. Please, choose a different time or adjust the previously entered log entry time "{oldest_log:%F %T}".')
 
-    if at > now() + timedelta(seconds=10):
-      future_time = input(f'The time that you specified "{at:%F %T}" is in the future. Are you certain you want to {state.rstrip("ed")} the {self:name} project in the future (y|N)? ')
+    if self.when > now() + timedelta(seconds=10):
+      future_time = input(f'The time that you specified "{self.when:%F %T}" is in the future. Are you certain you want to {self.state.rstrip("ed")} the {self:name} project in the future (y|N)? ')
       if not future_time.strip().casefold().startswith('y'):
         return
 
@@ -242,7 +234,7 @@ class LogProject(Project):
     db.rm('logs', self.timestamp_id)
 
   def rename(self, new):
-    raise Project.InvalidTypeE(f"Project {new!r} is the wrong type {type(new)!r}.")
+    raise InvalidTypeE(f"Project {new!r} is the wrong type {type(new)!r}.")
 
   @classmethod
   def all_matching_since(kind, matching:str, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:
@@ -271,7 +263,7 @@ class LogProject(Project):
     if _version is not None:
       key = f'logs-{str(_version)}'
 
-    return (_project for (tid, project) in db.xrange(key, start='-', count=count) if (_project := Project.make(project, when=tid)).equiv(matching))
+    return (_project for (tid, project) in db.xrange(key, start='-', count=count) if (_project := LogProject.make(project, when=tid)).equiv(matching))
 
   @classmethod
   def all(kind, count:int=None, _version:str | UUID=None) -> Generator:
@@ -279,17 +271,18 @@ class LogProject(Project):
     if _version is not None:
       key = f'logs-{str(_version)}'
 
-    return (Project.make(project, when=tid) for (tid, project) in db.xrange(key, start='-', count=count))
+    return (LogProject.make(project, when=tid) for (tid, project) in db.xrange(key, start='-', count=count))
 
   @classmethod
   def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
+    raise Exception("This code is broken right now. The code to update the time does not do what it is supposed to")
     logs = LogProject.all_since(starting, count=2)
 
     if len(logs) > 1:
       if logs[0].when == logs[1].when:
         pass
       elif logs[1].when < to:
-        raise Project.InvalidTimeE(f"The first log entry {logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{p.to:%F %T}'.\nThis is unacceptable. Failing.")
+        raise InvalidTimeE(f"The first log entry {logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{to:%F %T}'.\nThis is unacceptable. Failing.")
 
     version_id = uuid4()
     new_key = f'logs-{str(version_id)}'

@@ -1,7 +1,7 @@
 from argparse import Namespace
 from . import *
 from .colors import colors
-from .project import Project, LogProject
+from .project import Project, LogProject, FauxProject
 import smtplib
 
 class Report(object):
@@ -11,7 +11,7 @@ class Report(object):
     if scale not in Report.SCALES:
       raise Exception(f'Invalid scale specified {scale!r}.')
 
-    self._last = Project.make('last')
+    self._last = Project.last()
     self.at = at
     self.scale = scale
     self.include_all = include_all
@@ -19,7 +19,7 @@ class Report(object):
 
     self._data = self._collate(data)
 
-    if self._last is not None and self._last in self._data and self._last.is_running():
+    if not isinstance(self._last, FauxProject) and self._last in self._data and self._last.is_running():
       self._data[self._last] += int(now().timestamp()-self._last.when.timestamp())
 
     if self.include_all:
@@ -157,39 +157,25 @@ class Report(object):
     return r
 
   def _time_format(self) -> str:
-    match (self.show_header, self.scale):
-      case (False,  _): r = ''
-      case (True, 'w'): r = ' w  d  h  m  s\n'
-      case (True, 'd'): r = '  d  h  m  s\n'
-      case (True, 'h'): r = '  h  m  s\n'
-      case (True, 'm'): r = '   m  s\n'
-      case (True, 's'): r = '       s\n'
+    match self.scale:
+      case 'w': r, fmt = self.show_header and ' w  d  h  m  s\n' or '', '{:03}:{:02}:{:02}:{:02}:{:02}'
+      case 'd': r, fmt = self.show_header and '  d  h  m  s\n'   or '', '{:03}:{:02}:{:02}:{:02}'
+      case 'h': r, fmt = self.show_header and '  h  m  s\n'      or '', '{:03}:{:02}:{:02}'
+      case 'm': r, fmt = self.show_header and '   m  s\n'        or '', '{:04}:{:02}'
+      case 's': r, fmt = self.show_header and '       s\n'       or '', ''
 
     all_total = sum(self._data.values())
-    t = ''
+
     for project, total in self._sorted_data:
       if total == 0 and not self.include_all:
         continue
 
-      if self.scale in ['w', 'd', 'h']:
-        duration = self._how_long(total)
-        total_duration = self._how_long(all_total)
-        r += '{:03}:'.format(duration[0])
-        r += ('{:02}:'*(len(duration)-1)).rstrip(':').format(*duration[1:])
-        t =  '{:03}:'.format(total_duration[0])
-        t += ('{:02}:'*(len(total_duration)-1)).rstrip(':').format(*total_duration[1:])
-        t += ' Total'
-
-      if self.scale == 'm':
-        r += '{:04}:{:02}'.format(*self._how_long(total))
-        t =  '{:04}:{:02} Total'.format(*self._how_long(all_total))
-
-      if self.scale == 's':
-        r += f'{int(total): >8}'
-        t = ''
-
-      r += f' {project:name!r}\n'
-    r += f'{t}\n'
+      if self.scale != 's':
+        r += f'{fmt} {project:name!r}'.format(*self._how_long(total))
+      else:
+        r += f'{int(total): >8} {project:name!r}'
+    r += fmt.format(*self._how_long(all_total))
+    r += ' Total\n'
     return r
 
   def __format__(self, fmt_spec: Any) -> str:

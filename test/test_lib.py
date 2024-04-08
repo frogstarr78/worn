@@ -82,7 +82,7 @@ class TestLib(TestWornBase):
     self.assertEqual(604800, WEEK)
 
   def test_parse_timestamp(self):
-    from lib import parse_timestamp
+    from lib import parse_timestamp, InvalidTypeE, InvalidTimeE
 
     ts = parse_timestamp(1711729682)
     self.assertIsInstance(ts, datetime)
@@ -116,7 +116,7 @@ class TestLib(TestWornBase):
 
     ts = parse_timestamp('17117296821234')
     self.assertIsInstance(ts, datetime)
-    self.assertEqual(datetime(2024, 3, 29, 9, 28, 2, 1234), ts)
+    self.assertEqual(datetime(2024, 3, 29, 9, 28, 2, 123400), ts)
 
     ts = parse_timestamp('1711729682.1234')
     self.assertIsInstance(ts, datetime)
@@ -124,25 +124,37 @@ class TestLib(TestWornBase):
 
     ts = parse_timestamp('1711154701553-1')
     self.assertIsInstance(ts, datetime)
-    self.assertEqual(datetime(2024, 3, 22, 17, 45, 1, 553), ts)
+    self.assertEqual(datetime(2024, 3, 22, 17, 45, 1, 553000), ts)
 
-    with self.assertRaises(Exception):
+    with self.assertRaises(InvalidTimeE):
+      parse_timestamp('')
+
+    with self.assertRaises(InvalidTimeE):
       parse_timestamp('abcdefghij.k')
 
-    with self.assertRaises(Exception):
+    with self.assertRaises(InvalidTimeE):
       parse_timestamp('1234567890.k')
 
-    with self.assertRaises(Exception):
+    with self.assertRaises(InvalidTimeE):
       parse_timestamp('abcdefghij.12')
 
-    with self.assertRaises(Exception):
+    with self.assertRaises(InvalidTimeE):
       parse_timestamp('1711729682.1234.1')
 
-    with self.assertRaises(Exception):
+    with self.assertRaises(InvalidTypeE):
       parse_timestamp('123')
 
-    with self.assertRaises(Exception):
+    with self.assertRaises(InvalidTypeE):
       parse_timestamp(range(0, 4))
+
+    with self.assertRaises(InvalidTimeE):
+      parse_timestamp('17117296823.1234')
+
+    with self.assertRaises(InvalidTypeE):
+      parse_timestamp('abc')
+
+    with self.assertRaises(InvalidTypeE):
+      parse_timestamp(None)
 
   def test_explain_dates(self):
     from lib import explain_dates

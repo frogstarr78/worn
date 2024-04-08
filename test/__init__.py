@@ -11,6 +11,7 @@ import typing
 import datetime
 import importlib
 import sys
+from operator import add, sub
 
 sys.modules["_datetime"] = None
 importlib.reload(datetime)
@@ -21,6 +22,9 @@ ME     = os.path.abspath(__file__)
 MY_DIR = os.path.dirname(ME)
 
 sys.path.append(os.path.join(MY_DIR, '..', 'lib'))
+
+def time_traveled(*, since=datetime.now(), op=sub, **kw):
+  return op(since, timedelta(**kw))
 
 class TestWornBase(unittest.TestCase):
   def setUp(self):

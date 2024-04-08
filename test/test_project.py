@@ -1,6 +1,6 @@
 from test import *
 from lib.project import Project, FauxProject, LogProject
-from lib import now
+from lib import now, InvalidTypeE, InvalidTimeE
 
 class TestProject(TestWornBase):
   def setUp(self):
@@ -148,7 +148,7 @@ class TestProject(TestWornBase):
         self.assertEqual(mockp['log'].call_args.args, ('started', when))
 
   def test_rename(self):
-    with self.assertRaises(Project.InvalidTypeE):
+    with self.assertRaises(InvalidTypeE):
       Project(uuid4(), 'Hooliganism').rename('not a project')
 
     _uuid = uuid4()
@@ -217,7 +217,7 @@ class TestProject(TestWornBase):
     when = 1711313926.48
     _uuid = uuid4()
     with patch('lib.db.has', return_value=True) as mock_has:
-      with patch('lib.db.xrange', return_value=[(f'{when:%s%f}-0', {'project': str(_uuid), 'state': 'started'})]) as mock_range:
+      with patch('lib.db.xrange', return_value=[(f'{str(when).replace(".", "")}-0', {'project': str(_uuid), 'state': 'started'})]) as mock_range:
         with patch('lib.db.get', return_value='Who dis') as mock_get:
           proj = Project.last()
           self.assertEqual(mock_has.call_count, 1)
@@ -233,7 +233,7 @@ class TestProject(TestWornBase):
           self.assertEqual(proj.id, _uuid)
           self.assertEqual(proj.name, 'Who dis')
           self.assertEqual(proj.state, 'started')
-          self.assertEqual(proj.when, datetime.fromtimestamp(1711313926.000048))
+          self.assertEqual(proj.when, datetime.fromtimestamp(1711313926.480000))
 
   def test_make_using_an_uuid(self):
     '''
@@ -373,7 +373,7 @@ class TestProject(TestWornBase):
   def test_make_fails(self):
     '''case _:'''
     with patch('builtins.print') as mock_debug:
-      with self.assertRaises(Project.InvalidTypeE):
+      with self.assertRaises(InvalidTypeE):
         Project.make(123)
 
   def test_nearest_project_by_name_last(self):
