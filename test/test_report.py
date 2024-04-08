@@ -58,7 +58,7 @@ class TestReport(TestWornBase):
       last.is_running.return_value = True
       r = Report([p1, p2], when)
 
-      self.assertEqual(last.call_count, 3)
+      self.assertEqual(last.call_count, 1)
       self.assertEqual(last.is_running.call_count, 1)
 
       self.assertEqual(69.0, r._data[p1])
