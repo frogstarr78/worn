@@ -2,12 +2,6 @@ from test import *
 from lib.project import Project, LogProject
 from lib import now, InvalidTypeE, InvalidTimeE
 
-def time_traveled(since=now(), direction='back', **kw):
-  if direction == 'back':
-    return since - timedelta(**kw)
-  elif direction == 'forward':
-    return since + timedelta(**kw)
-
 class TestLogProject(TestWornBase):
   def test_init(self):
 #    with self.assertRaises(InvalidTimeE):
@@ -49,10 +43,10 @@ class TestLogProject(TestWornBase):
     '''Test that the code properly raises an exception when the date is earlier than the last recorded date'''
     _uuid = uuid4()
     _when = now()
-    p = LogProject(_uuid, 'What are we doing?', when=time_traveled(_when, seconds=4))
+    p = LogProject(_uuid, 'What are we doing?', when=time_traveled(since=_when, seconds=4))
     with self.assertRaises(InvalidTimeE):
       with patch('lib.db.has', return_value=True) as dbh:
-        with patch('lib.db.xinfo', return_value=f'{time_traveled(_when, seconds=3):%s%f}-0') as dbi:
+        with patch('lib.db.xinfo', return_value=f'{time_traveled(since=_when, seconds=3):%s%f}-0') as dbi:
           with patch('lib.db.add') as mock_add:
             p.add()
             self.assertEqual(mock_add.call_count, 0)
@@ -61,9 +55,9 @@ class TestLogProject(TestWornBase):
     '''Test that the code properly records entries when the date is less than 10 seconds into the future.'''
     _uuid = uuid4()
     when = now()
-    p = LogProject(_uuid, '  What are we doing?  ', when=time_traveled(since=when, seconds=9))
+    p = LogProject(_uuid, '  What are we doing?  ', when=time_traveled(since=when, op=add, seconds=9))
     with patch('lib.db.has', return_value=True) as dbh:
-      with patch('lib.db.xinfo', return_value=f'{time_traveled(since=when, seconds=10):%s%f}-0') as dbi:
+      with patch('lib.db.xinfo', return_value=when) as dbi:
         with patch('builtins.input') as mock_input:
           with patch('lib.db.add') as mock_add:
             p.add()
@@ -73,83 +67,68 @@ class TestLogProject(TestWornBase):
             self.assertEqual(mock_input.call_count, 0)
 
             self.assertEqual(mock_add.call_count, 1)
-            self.assertEqual(mock_add.call_args.args, ('logs', dict(project=_uuid, state='stopped', id=f'{time_traveled(since=when, seconds=9):%s%f}-*')))
+            self.assertEqual(mock_add.call_args.args, ('logs', dict(project=_uuid, state='stopped', id=f'{time_traveled(since=when, op=add, seconds=9):%s%f}-*')))
             self.assertTrue(p._stored)
 
   def test_add_future_time_but_user_declines(self):
     '''Test that the code properly records entries when the date is in the future but the user declines the prompt.'''
-#    _uuid = uuid4()
-#    p = LogProject(_uuid, '  What are we doing?  ')
-#    with patch('lib.db.has', return_value=True) as dbh:
-#      with patch('lib.db.xinfo', return_value=f'{time_traveled(_when, seconds=3):%s%f}-0') as dbi:
-#        with patch('lib.db.add') as mock_add:
+    _uuid = uuid4()
+    when = now()
+    p = LogProject(_uuid, '  What are we doing?  ', when=time_traveled(since=when, op=add, seconds=12))
+    with patch('lib.db.has', return_value=True) as dbh:
+      with patch('lib.db.xinfo', return_value=when) as dbi:
+        with patch('builtins.input', return_value='nope') as mock_input:
+          with patch('lib.db.add') as mock_add:
+            p.add()
+
+            self.assertEqual(dbh.call_count, 1)
+            self.assertEqual(dbi.call_count, 1)
+            self.assertEqual(mock_input.call_count, 1)
+
+            self.assertEqual(mock_add.call_count, 0)
+            self.assertFalse(p._stored)
 
   def test_add_future_time_and_user_agrees(self):
     '''Test that the code properly records entries when the date is in the future and the user aggrees to the prompt.'''
-#    _uuid = uuid4()
-#    p = LogProject(_uuid, '  What are we doing?  ')
-#    with patch('lib.db.has', return_value=True) as dbh:
-#      with patch('lib.db.xinfo', return_value=f'{time_traveled(_when, seconds=3):%s%f}-0') as dbi:
-#        with patch('lib.db.add') as mock_add:
+    _uuid = uuid4()
+    when = now()
+    p = LogProject(_uuid, '  What are we doing?  ', state='started', when=time_traveled(since=when, op=add, seconds=13))
+    with patch('lib.db.has', return_value=True) as dbh:
+      with patch('lib.db.xinfo', return_value=when) as dbi:
+        with patch('builtins.input', return_value='YASUREYOUBECHA') as mock_input:
+          with patch('lib.db.add') as mock_add:
+            p.add()
 
-#  def test_add_future_time(self):
-#    '''Test that the code properly records entries when the date is in the future'''
-#    _uuid = uuid4()
-#    p = LogProject(_uuid, '  What are we doing?  ')
-#    with patch('lib.db.has', return_value=True) as dbh:
-#      with patch('lib.db.xinfo', return_value=f'{time_traveled(_when, seconds=3):%s%f}-0') as dbi:
-#        with patch('lib.db.add') as mock_add:
-#          p.log('stopped', self.known_date)
-#
-#          self.assertEqual(dbh.call_count, 1)
-#          self.assertEqual(mock_add.call_count, 2)
-#          self.assertEqual(mock_add.mock_calls[0].args, ('projects', {'what are we doing?': _uuid, _uuid: 'What are we doing?'}))
-#          self.assertEqual(mock_add.mock_calls[1].args, ('logs', {'project': _uuid, 'state': 'stopped'}))
-#          self.assertEqual(mock_add.mock_calls[0].kwargs, dict(nx=True))
-#
-#        _uuid = uuid4()
-#        p = LogProject(_uuid, '  What else are we doing?  ')
-#        with patch('builtins.input', return_value='y') as mock_in:
-#          with patch('lib.db.add') as mock_add:
-#            p.log('stopped', time_traveled('forward', seconds=20))
-#
-#          self.assertEqual(mock_in.call_count, 1)
-#          self.assertEqual(mock_add.call_count, 2)
-#          self.assertEqual(mock_add.mock_calls[0].args, ('projects', {'what else are we doing?': _uuid, _uuid: 'What else are we doing?'}))
-#          self.assertEqual(mock_add.mock_calls[1].args, ('logs', {'project': _uuid, 'state': 'stopped'}))
-#          self.assertEqual(mock_add.mock_calls[0].kwargs, dict(nx=True))
-#
-#        _uuid = uuid4()
-#        p = LogProject(_uuid, "Don't start in the future")
-#        with patch('builtins.input', return_value='not yes') as mock_in:
-#          with patch('lib.db.add') as mock_add:
-#            p.log('stopped', time_traveled('forward', seconds=20))
-#
-#          self.assertEqual(mock_in.call_count, 1)
-#          self.assertEqual(mock_add.call_count, 0)
+            self.assertEqual(dbh.call_count, 1)
+            self.assertEqual(dbi.call_count, 1)
+            self.assertEqual(mock_input.call_count, 1)
+
+            self.assertEqual(mock_add.call_count, 1)
+            self.assertEqual(mock_add.call_args.args, ('logs', dict(project=_uuid, state='started', id=f'{time_traveled(since=when, op=add, seconds=13):%s%f}-*')))
+            self.assertTrue(p._stored)
 
   def test_vanillaish_add(self):
     _uuid = uuid4()
     _when = now()
-    p = LogProject(_uuid, 'Packed some things', 'stopped', time_traveled(_when, seconds=2))
+    p = LogProject(_uuid, 'Packed some things', 'stopped', time_traveled(since=_when, seconds=2))
     with patch('lib.db.has', return_value=False) as dernt_hav:
       with patch('lib.db.add') as mock_add:
         p.add()
 
         self.assertEqual(dernt_hav.call_count, 1)
         self.assertEqual(mock_add.call_count, 1)
-        self.assertEqual(mock_add.call_args.args, ('logs', {'project': _uuid, 'state': 'stopped', 'id': f'{time_traveled(_when, seconds=2):%s%f}-*'}))
+        self.assertEqual(mock_add.call_args.args, ('logs', {'project': _uuid, 'state': 'stopped', 'id': f'{time_traveled(since=_when, seconds=2):%s%f}-*'}))
  
-    p = LogProject(_uuid, 'Your phone is going off', 'started', time_traveled(_when, seconds=2))
+    p = LogProject(_uuid, 'Your phone is going off', 'started', time_traveled(since=_when, seconds=2))
     with patch('lib.db.has', return_value=True) as dbh:
-      with patch('lib.db.xinfo', return_value=f'{time_traveled(_when, seconds=3):%s%f}-0') as dbi:
+      with patch('lib.db.xinfo', return_value=f'{time_traveled(since=_when, seconds=3):%s%f}-0') as dbi:
         with patch('lib.db.add') as mock_add:
           p.add()
 
           self.assertEqual(dbh.call_count, 1)
           self.assertEqual(dbi.call_count, 1)
           self.assertEqual(mock_add.call_count, 1)
-          self.assertEqual(mock_add.call_args.args, ('logs', {'project': _uuid, 'state': 'started', 'id': f'{time_traveled(_when, seconds=2):%s%f}-*'}))
+          self.assertEqual(mock_add.call_args.args, ('logs', {'project': _uuid, 'state': 'started', 'id': f'{time_traveled(since=_when, seconds=2):%s%f}-*'}))
 
   def test_remove(self):
     log = LogProject(uuid4(), 'A project', state='started', when=self.known_date)
@@ -243,20 +222,20 @@ class TestLogProject(TestWornBase):
 
   def test_all_since(self):
     when = datetime.now()
-    p1 = LogProject(uuid4(), 'This is the project name', state='started', when=f'{time_traveled(when, seconds=3):%s%f}-0')
-    p2 = LogProject(p1.id,   'This is the project name', state='stopped', when=f'{time_traveled(when, seconds=1):%s%f}-0')
+    p1 = LogProject(uuid4(), 'This is the project name', state='started', when=f'{time_traveled(since=when, seconds=3):%s%f}-0')
+    p2 = LogProject(p1.id,   'This is the project name', state='stopped', when=f'{time_traveled(since=when, seconds=1):%s%f}-0')
     sample_log_entries = [
       (p1.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
       (p2.timestamp_id, {'project': str(p2.id), 'state': 'stopped'})
     ]
     with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
       with patch.object(LogProject, 'make', side_effect=iter([p1, p2])) as mock_project:
-        r = list(LogProject.all_since(time_traveled(when, seconds=4)))
+        r = list(LogProject.all_since(time_traveled(since=when, seconds=4)))
 
         self.assertTrue(mock_range.called)
         self.assertEqual(mock_range.call_count, 1)
         self.assertEqual(mock_range.call_args.args, ('logs',))
-        self.assertEqual(mock_range.call_args.kwargs, dict(start=f'{time_traveled(when, seconds=4):%s%f}-0', count=None))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start=f'{time_traveled(since=when, seconds=4):%s%f}-0', count=None))
 
         self.assertEqual(mock_project.call_count, 2)
 
@@ -265,12 +244,12 @@ class TestLogProject(TestWornBase):
     _vuuid = uuid4()
     with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
       with patch('lib.project.LogProject.make', side_effect=iter([p1, p2])) as mock_project:
-        r = LogProject.all_since(time_traveled(when, seconds=4), _version=_vuuid)
+        r = LogProject.all_since(time_traveled(since=when, seconds=4), _version=_vuuid)
 
         self.assertTrue(mock_range.called)
         self.assertEqual(mock_range.call_count, 1)
         self.assertEqual(mock_range.call_args.args, (f'logs-{_vuuid}',))
-        self.assertEqual(mock_range.call_args.kwargs, dict(start=f'{time_traveled(when, seconds=4):%s%f}-0', count=None))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start=f'{time_traveled(since=when, seconds=4):%s%f}-0', count=None))
 
   def test_all_matching(self):
     p1 = LogProject(uuid4(), 'This and that',            state='stopped', when=time_traveled(seconds=5))
