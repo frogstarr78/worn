@@ -21,7 +21,7 @@ def isuuid(s:Any) -> bool:
   match s:
     case str():                           return re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', s)
     case tuple() | list() if len(s) == 1: return isuuid(s[0])
-    case _ if isinstance(s, UUID):        return True
+    case UUID():                          return True
     case _:                               return False
 
 def stream_id(ts:datetime | str, seq='*'):

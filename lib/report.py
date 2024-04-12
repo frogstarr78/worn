@@ -19,8 +19,16 @@ class Report(object):
 
     self._data = self._collate(data)
 
-    if not isinstance(self._last, FauxProject) and self._last in self._data and self._last.is_running():
-      self._data[self._last] += int(now().timestamp()-self._last.when.timestamp())
+    if not isinstance(self._last, FauxProject):
+      print(f'here {self._data} last {self._last}')
+      if hash(self._last) in self._data:
+        print('there')
+        if self._last.is_running():
+          print('where')
+          self._data[self._last] += int(now().timestamp()-self._last.when.timestamp())
+
+#    if not isinstance(self._last, FauxProject) and self._last in self._data and self._last.is_running():
+#      self._data[self._last] += int(now().timestamp()-self._last.when.timestamp())
 
     if self.include_all:
       for project in Project.all():
@@ -45,14 +53,14 @@ class Report(object):
     return sorted(self._data.items(), key=lambda pnt: pnt[0].name.casefold())
 
   def mail(self, to:str, fmt:str='simple', *, noop:bool=False) -> None:
-    body = f'{self:{fmt}}'
-    if noop:
-      print(body)
-      return
+      body = f'{self:{fmt}}'
+      if noop:
+        print(body)
+        return
 
-    with smtplib.SMTP('localhost') as mc:
-      mc.set_debuglevel(1)
-      mc.sendmail('scott@viviotech.net', to, body)
+      with smtplib.SMTP('localhost') as mc:
+        mc.set_debuglevel(1)
+        mc.sendmail('scott@viviotech.net', to, body)
 
   def post(self, ticket:str | int, comment:str, *, noop:bool=False) -> None:
     if not noop:
