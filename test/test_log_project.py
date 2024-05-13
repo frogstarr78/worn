@@ -181,31 +181,32 @@ class TestLogProject(TestWornBase):
         self.assertEqual(mock_range.call_args.kwargs, dict(start='-', count=9))
         self.assertEqual(mock_project.call_count, 3)
  
-  def test_all_matching_since(self): pass
-#    when = time_traveled(seconds=4)
-#    p1 = LogProject(uuid4(), 'The flag of Hollywood',  state='stopped', when=time_traveled(seconds=5))
-#    p2 = LogProject(uuid4(), 'Will you do me a favor', state='started', when=time_traveled(seconds=3))
-#    p3 = LogProject(p2.id,   p2.name,                  state='stopped', when=time_traveled(seconds=1))
-#    p4 = LogProject(p1.id,   p1.name,                  state='started', when=datetime.now())
-#    sample_log_entries = [
-#      (p1.timestamp_id, {'project': str(p1.id), 'state': 'stopped'}),
-#      (p2.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
-#      (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'}),
-#      (p4.timestamp_id, {'project': str(p1.id), 'state': 'started'})
-#    ]
-#    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+  def test_all_matching_since(self):
+    when = time_traveled(seconds=4)
+    p1 = LogProject(uuid4(), 'The flag of Hollywood',  state='stopped', when=time_traveled(seconds=5))
+    p2 = LogProject(uuid4(), 'Will you do me a favor', state='started', when=time_traveled(seconds=3))
+    p3 = LogProject(p2.id,   p2.name,                  state='stopped', when=time_traveled(seconds=1))
+    p4 = LogProject(p1.id,   p1.name,                  state='started', when=datetime.now())
+    sample_log_entries = [
+      (p1.timestamp_id, {'project': str(p1.id), 'state': 'stopped'}),
+      (p2.timestamp_id, {'project': str(p2.id), 'state': 'started'}),
+      (p3.timestamp_id, {'project': str(p2.id), 'state': 'stopped'}),
+      (p4.timestamp_id, {'project': str(p1.id), 'state': 'started'})
+    ]
+    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
+      with patch.object(Project, 'make', side_effect=iter([p2, p3, p4])) as mock_project:
 #      with patch('lib.db.get') as mock_get:
 #        with patch('lib.project.LogProject.make', side_effect=iter([p2, p3, p4])) as mock_project:
-#          r = list(LogProject.all_matching_since(p1.name, when))
-#
-#          self.assertEqual(mock_range.call_count, 1)
-#          self.assertEqual(mock_range.call_args.args, ('logs',))
-#          self.assertEqual(mock_range.call_args.kwargs, dict(start=f'{when:%s%f}-0', count=None))
-#          self.assertEqual(mock_get.call_count, 3)
-#          self.assertEqual(mock_project.call_count, 3)
-#
-#          self.assertListEqual(r, [p2, p3])
-#
+        r = list(LogProject.all_matching_since(p1.name, when))
+
+        self.assertEqual(mock_range.call_count, 1)
+        self.assertEqual(mock_range.call_args.args, ('logs',))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start=f'{when:%s%f}-0', count=None))
+#          self.assertEqual(mock_get.call_count, 4)
+        self.assertEqual(mock_project.call_count, 3)
+
+        self.assertListEqual(r, [p2, p3])
+
 #    _vuuid = uuid4()
 #    with patch('lib.db.xrange', return_value=sample_log_entries) as mock_range:
 #      with patch('lib.db.get') as mock_get:

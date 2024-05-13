@@ -109,7 +109,17 @@ class TestProject(TestWornBase):
       self.assertEqual(mock_add.call_args.args, ('projects', {'what are we doing?': _uuid, _uuid: 'What are we doing?'}))
       self.assertEqual(mock_add.call_args.kwargs, dict(nx=True))
 
-  def test_log(self): pass
+  def test_log(self):
+    when = now()
+    _id = uuid4()
+    me = Project(_id, 'Paperback')
+    with patch('lib.project.LogProject') as log_init:
+      me.log('stopped', when)
+      self.assertEqual(log_init.call_args.args, (_id, me.name, 'stopped', when))
+
+    with patch.object(LogProject, 'add') as log_add:
+      me.log('stopped', when)
+      self.assertEqual(log_add.call_count, 1)
 
   def test_stop_project(self):
     proj = LogProject(uuid4(), 'Mud Larker', 'stopped', f'{self.known_date:%s%f}-0')
