@@ -1,6 +1,8 @@
-Package       Version
-------------- -------
-async-timeout 4.0.3
-pip           23.0.1
-redis         5.0.3
-setuptools    66.1.1
+async-timeout==4.0.3
+certifi==2024.2.2
+charset-normalizer==3.3.2
+coverage==7.4.4
+idna==3.6
+redis==5.0.3
+requests==2.31.0
+urllib3==2.2.1
