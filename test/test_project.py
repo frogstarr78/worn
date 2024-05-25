@@ -392,7 +392,7 @@ class TestProject(TestWornBase):
       with patch.object(Project, 'make', return_value=f) as fake_proj:
         r = Project.nearest_project_by_name('last')
         self.assertTrue(mock_debug.called)
-        self.assertEqual(r, f)
+        self.assertTrue(r.pop().equiv(f))
 
   def test_nearest_project_by_name_matching_uuid(self):
     f = Project(uuid4(), 'Fake it!')
@@ -402,7 +402,7 @@ class TestProject(TestWornBase):
           r = Project.nearest_project_by_name(str(f.id))
           self.assertTrue(mock_debug.called)
           self.assertTrue(fake_proj.called)
-          self.assertEqual(r, f)
+          self.assertTrue(r.pop().equiv(f))
 
   def test_nearest_project_by_name_matching_project_name(self):
     with patch('builtins.print') as mock_debug:

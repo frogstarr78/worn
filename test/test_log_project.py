@@ -197,7 +197,7 @@ class TestLogProject(TestWornBase):
       with patch.object(Project, 'make', side_effect=iter([p2, p3, p4])) as mock_project:
 #      with patch('lib.db.get') as mock_get:
 #        with patch('lib.project.LogProject.make', side_effect=iter([p2, p3, p4])) as mock_project:
-        r = list(LogProject.all_matching_since(p1.name, when))
+        r = list(LogProject.all_matching_since(p1.name, time_traveled(seconds=3)))
 
         self.assertEqual(mock_range.call_count, 1)
         self.assertEqual(mock_range.call_args.args, ('logs',))
