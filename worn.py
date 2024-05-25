@@ -29,7 +29,7 @@ def main() -> None:
   match p:
     case Namespace(action='gui'):
       from lib.gui import gui
-      gui()
+      gui([project.name for project in Project.all()], Project.last())
     case Namespace(action='rename'):
       Project.make(p.project).rename(Project(' '.join(p.to).strip().replace('\n', ' ')))
     case Namespace(action='rm'):
@@ -52,7 +52,7 @@ def main() -> None:
           Prompt.PROJECT += f'{n}: {_project.id}: {_project.name}\n'
           n+=1
         try:
-          project_number = input(PROJECT_PROMPT)
+          project_number = input(Prompt.PROJECT)
         except EOFError:
           debug('Exiting')
           sys.exit(OK)
@@ -133,7 +133,7 @@ def main() -> None:
     case Namespace(action='edit'):
       earg.print_help()
     case Namespace(action='report', project=None, since=None, ticket=None, mailto=None):
-      report = Report(LogProject.all(), last.when, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      report = Report(LogProject.all(), LogProject.last().when, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
     case Namespace(action='report', project=None, since=since, ticket=None, mailto=None):
       report = Report(LogProject.all_since(since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))

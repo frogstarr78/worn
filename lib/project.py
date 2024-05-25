@@ -129,16 +129,16 @@ class Project(object):
         raise InvalidTypeE(msg)
 
   @classmethod
-  def nearest_project_by_name(kind, name:str) -> set[str]:
+  def nearest_project_by_name(kind, name:str) -> set[Self]:
     matches = set([])
     counts = [0, 0]
     if name == 'last' or db.has('projects', name) or db.has('projects', name.strip().casefold()):
       counts = [1, 1]
       debug(f'counts {counts!r}')
       if isinstance(name, str) and not isuuid(name):
-        return Project.make(name.strip().casefold())
+        return {Project.make(name.strip().casefold())}
       else:
-        return Project.make(name)
+        return {Project.make(name)}
 
     for label in db.keys('projects'):
       counts[0] += 1
@@ -244,7 +244,13 @@ class LogProject(Project):
     if _version is not None:
       key = f'logs-{str(_version)}'
 
-    return (_project for (tid, project) in db.xrange(key, start=start, count=count) if (_project := Project.make(project, when=tid)).equiv(matching))
+    r = []
+    for (tid, project) in db.xrange(key, start=start, count=count):
+      _project = Project.make(project, when=tid)
+      if _project.equiv(matching):
+        r.append(_project)
+    return r
+#    return (_project for (tid, project) in db.xrange(key, start=start, count=count) if (_project := Project.make(project, when=tid)).equiv(matching))
 #    return (Project.make(project.get('project'), when=tid)) for (tid, project) in db.xrange(key, start=start, count=count) if (_project := .equiv(matching))
 
   @classmethod

@@ -6,7 +6,7 @@ from os import getpid
 
 CONTROL = Path(f'~/run/worn.{getpid()}').expanduser()
 
-def gui() -> None:
+def gui(_projects, last=None) -> None:
   if CONTROL.exists(): return
 
   root = Tk()
@@ -21,11 +21,10 @@ def gui() -> None:
   pfrm = ttk.LabelFrame(root, text='Project', underline=0, padding=11)
   pfrm.grid(sticky=(N, S, E, W))
 
-  _projects = [project.name for project in Project.all()]
   c = ttk.Combobox(pfrm, values=_projects, textvariable=proj, width=len(max(_projects, key=len))-10)
 
-  if (project := Project.make('last')).is_running():
-    c.set(project.name)
+  if isinstance(last, Project) and last.is_running():
+    c.set(last.name)
   c.grid(row=0, column=0, pady=7, columnspan=4, sticky=(E, W))
 
   hl = ttk.Label(pfrm, text='At time')

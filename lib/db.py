@@ -60,6 +60,8 @@ def rm(key:str, sub:int | str=None) -> None:
 def add(key:str, val:str | int | dict=None, *, expire:int=None, nx:bool=False) -> None:
   if isinstance(val, dict):
     _val = dict([(str(_k), str(_v)) for _k, _v in val.items()])
+  else:
+    _val = val
 
   _key = str(key)
 
@@ -70,8 +72,20 @@ def add(key:str, val:str | int | dict=None, *, expire:int=None, nx:bool=False) -
           conn.hsetnx(_key, _k, _v)
       case 'hash':   conn.hset(_key, mapping=_val)
       case 'stream': conn.xadd(_key, _val, id=_val.pop('id', '*'))
-      case 'string': conn.set(_key, str(val), nx=nx, ex=expire)
-      case kind:     raise Exception(f'Unable to set/add value for unhandled key kind {kind}.')
+      case 'string': conn.set(_key, str(_val), nx=nx, ex=expire)
+      case _:
+        if isinstance(_val, dict):
+          if nx:
+            for _k, _v in _val.items():
+              conn.hsetnx(_key, _k, _v)
+          elif 'id' in _val:
+            conn.xadd(_key, _val, id=_val.pop('id', '*'))
+          else:
+            conn.hset(_key, mapping=_val)
+        elif isinstance(_val, str):
+          conn.set(_key, str(_val), nx=nx, ex=expire)
+        else:
+          raise Exception(f'Unable to set/add value for unhandled key kind {_val}.')
 
     save()
 

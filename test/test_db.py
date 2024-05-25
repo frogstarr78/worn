@@ -263,10 +263,45 @@ class TestLib(TestWornBase):
 
       self.assertEqual(mockachino['save'].call_count, 3)
 
-    with patch('redis.StrictRedis.type', return_value='set') as toy:
+    with patch.multiple('redis.StrictRedis', hsetnx=DEFAULT, save=DEFAULT) as advert:
+      '''Sell me something'''
+      with patch('redis.StrictRedis.type', return_value=None) as toy:
+        db.add('action_figure', {'pants': 'red'}, nx=True)
+        self.assertEqual(advert['hsetnx'].call_count, 1)
+        self.assertEqual(advert['hsetnx'].call_args.args, ('action_figure','pants', 'red'))
+        self.assertEqual(advert['save'].call_count, 1)
+
+    with patch.multiple('redis.StrictRedis', hset=DEFAULT, save=DEFAULT) as advert:
+      '''Sell me something'''
+      with patch('redis.StrictRedis.type', return_value=None) as toy:
+        db.add('doll', {'pants': 'blue'})
+        self.assertEqual(advert['hset'].call_count, 1)
+        self.assertEqual(advert['hset'].call_args.args, ('doll',))
+        self.assertEqual(advert['hset'].call_args.kwargs, dict(mapping=dict(pants='blue')))
+        self.assertEqual(advert['save'].call_count, 1)
+
+    with patch.multiple('redis.StrictRedis', xadd=DEFAULT, save=DEFAULT) as advert:
+      '''Sell me something'''
+      with patch('redis.StrictRedis.type', return_value=None) as toy:
+        db.add('doll', {'id': '123-0', 'shirt': 'green'})
+        self.assertEqual(advert['xadd'].call_count, 1)
+        self.assertEqual(advert['xadd'].call_args.args, ('doll', dict(shirt='green')))
+        self.assertEqual(advert['xadd'].call_args.kwargs, dict(id='123-0'))
+        self.assertEqual(advert['save'].call_count, 1)
+
+    with patch.multiple('redis.StrictRedis', set=DEFAULT, save=DEFAULT) as advert:
+      '''Sell me something'''
+      with patch('redis.StrictRedis.type', return_value=None) as toy:
+        db.add('doll', 'hair')
+        self.assertEqual(advert['set'].call_count, 1)
+        self.assertEqual(advert['set'].call_args.args, ('doll', 'hair'))
+        self.assertEqual(advert['save'].call_count, 1)
+
+    with patch('redis.StrictRedis.type', return_value=None) as toy:
       '''A toy is a made up version of things in real life'''
       with self.assertRaises(Exception):
-        db.add('doll', 'hair')
+        db.add('doll', None)
+
 
   def test_save(self):
     with patch.multiple('redis.StrictRedis', save=DEFAULT, bgsave=DEFAULT) as neone:
