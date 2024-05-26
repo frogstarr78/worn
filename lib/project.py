@@ -248,10 +248,10 @@ class LogProject(Project):
     if _version is not None:
       key = f'logs-{str(_version)}'
 
-    return (project for (tid, project) in db.xrange(key, start=start, count=count) if (project := LogProject.make(project, when=tid)) and project.equiv(matching))
+    return (_proj for (tid, project) in db.xrange(key, start=start, count=count) if (_proj := LogProject.make(project, when=tid)) and _proj.equiv(matching))
 
   from functools import partialmethod
-  all = partialmethod(all_matching_since, since=None, matching=None)
+  all = partialmethod(asincoll_matching_since, since=None, matching=None)
   all_matching = partialmethod(all_matching_since, since=None)
   all_since = partialmethod(all_matching_since, matching=None)
 
