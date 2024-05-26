@@ -24,12 +24,11 @@ def isuuid(s:Any) -> bool:
     case UUID():                          return True
     case _:                               return False
 
-def stream_id(ts:datetime | str, seq='*'):
-  match ts:
-    case int() | str() | bytes():       return stream_id(datetime.fromtimestamp(float(ts)), seq)
-    case float():                       return stream_id(datetime.fromtimestamp(ts), seq)
-    case _ if isinstance(ts, datetime): return f'{ts:%s%f}-{seq}'
-    case _:                             raise InvalidTypeE(f'Unknown timestamp {ts!r} type {type(ts)!r}.')
+def stream_id(ts, seq='*'):
+  if isinstance(ts, int | float):   return stream_id(datetime.fromtimestamp(float(ts)), seq)
+  elif isinstance(ts, str | bytes): return stream_id(parse_timestamp(ts), seq)
+  elif isinstance(ts, datetime):    return f'{ts:%s%f}-{seq}'
+  else:                             raise InvalidTypeE(f'Unknown timestamp {ts!r} type {type(ts)!r}.')
 
 def istimestamp_id(s:str) -> bool:
   return isinstance(s, str) and re.search(r'^\d+-(\d+|\*)$', s)
@@ -42,45 +41,113 @@ def isfloat(s:str) -> bool:
     case _:       return False
 
 def parse_timestamp(tsin):
-  match tsin:
-    case int() | float():
-      return datetime.fromtimestamp(float(tsin))
-    case list():
-      return parse_timestamp(' '.join(tsin))
-    case str():
-      if len(tsin) == 0:
-        raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
-      elif tsin.isdigit():
-        if len(tsin) < 10:
-          raise InvalidTypeE(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
-        elif len(tsin) >= 10:
-          return parse_timestamp(float('.'.join([tsin[:10], tsin[10:]])))
-      elif tsin.count('.') > 1:
-        raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
-      elif tsin.count('.') == 1:
-        ts, mils = tsin.split('.')
-        if len(ts) > 10:
-          raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
-        else:
-          if ts.isdigit() and mils.isdigit():
-            return parse_timestamp(float('.'.join([ts, mils])))
-          else:
-            raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
-      elif '-' in tsin:
-        '''Do we have something that looks like a redis stream id or date?'''
+  weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+  abbrev_weekdays = [day[:3] for day in weekdays]
 
-        if tsin.count('-') == 1:
-          return parse_timestamp(tsin[:tsin.index('-')])
-        elif tsin.count(' ') == 2:
-          return datetime.strptime(tsin, '%a %Y-%m-%d %H:%M:%S')
-        elif tsin.count(' ') == 1:
-          return datetime.strptime(tsin, '%Y-%m-%d %H:%M:%S')
+  if isinstance(tsin, int | float):
+      return datetime.fromtimestamp(float(tsin))
+  elif isinstance(tsin, datetime):
+    return tsin
+  elif isinstance(tsin, list | tuple):
+    return parse_timestamp(' '.join(tsin))
+  elif isinstance(tsin, str):
+    if len(tsin) == 0:
+      raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
+
+    if tsin.count('.') > 1:
+      raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
+
+    if tsin.isdigit():
+      if len(tsin) < 10:
+        raise InvalidTimeE(f'Unknown input value for timestamp {tsin!r}.')
+
+      if len(tsin) >= 10:
+        return parse_timestamp(float('.'.join([tsin[:10], tsin[10:]])))
+    elif istimestamp_id(tsin):
+      '''A redis stream id'''
+      return parse_timestamp(tsin[:tsin.index('-')])
+    elif tsin.count('.') == 1:
+      ts, mils = tsin.split('.')
+      if len(ts) > 10:
+        raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
+
+      if ts.isdigit() and mils.isdigit():
+        return parse_timestamp(float('.'.join([ts, mils])))
       else:
-        raise InvalidTypeE(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
-    case _ if isinstance(tsin, datetime):
-      return tsin
-    case _:
-      raise InvalidTypeE(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
+        raise InvalidTimeE(f'Invalid timestamp {tsin!r} supplied.')
+    elif (dt_num := tsin.count(' ')) > 0:
+      '''parse a datetime'''
+      if dt_num > 3:
+        raise InvalidTimeE(f'Unknown datetime format for input value {tsin!r}.')
+
+      if dt_num == 3 and tsin.endswith('am') or tsin.endswith('pm'):
+        return datetime.strptime(tsin, '%a %Y-%m-%d %H:%M:%S %p')
+      elif dt_num == 2:
+        if tsin.endswith('am') or tsin.endswith('pm'):
+          return datetime.strptime(tsin, '%Y-%m-%d %H:%M:%S %p')
+        elif tsin.endswith(' ago'):
+          '''"parse" some time ago'''
+          num_time, num_scale, ago = tsin.casefold().split(' ')
+
+          if num_scale not in ['weeks', 'days', 'hours', 'minutes', 'seconds']:
+            raise InvalidTypeE(f'Provided scale {num_scale!r} is invalid.')
+
+          if not num_time.isdigit() or isfloat(num_time):
+            raise InvalidTypeE(f'The provided time {num_time!r} is invalid.')
+
+          return now() - timedelta(**{num_scale: int(num_time)})
+        else:
+          return datetime.strptime(tsin, '%a %Y-%m-%d %H:%M:%S')
+      elif tsin.count(':') == 1:
+        return datetime.strptime(tsin, '%Y-%m-%d %H:%M')
+      elif tsin.count(':') == 2:
+        return datetime.strptime(tsin, '%Y-%m-%d %H:%M:%S')
+      else:
+        raise InvalidTimeE(f'Invalid time {tsin!r} provided.')
+    elif (dat_sep := tsin.count('-')) > 1:
+      '''Do we have something that looks like a redis stream id or date?'''
+
+      if dat_sep > 3:
+        raise InvalidTimeE(f"Invalid data {tsin!r} supplied.")
+
+      if dat_sep == 2:
+        '''parse a date'''
+        return datetime.strptime(tsin, '%Y-%m-%d')
+
+    elif (hour_sep := tsin.count(':')) > 0:
+      '''parse a time'''
+      if hour_sep > 2:
+        raise InvalidTimeE(f'Unknown datetime format for input value {tsin!r}.')
+      elif hour_sep == 1:
+        return datetime.strptime(f'{now():%F} {tsin}', '%Y-%m-%d %H:%M')
+      elif hour_sep == 2:
+        return datetime.strptime(f'{now():%F} {tsin}', '%Y-%m-%d %H:%M:%S')
+    elif tsin.casefold() in weekdays:
+      '''"parse" a weekday'''
+      _now = now()
+      current_dow = _now.weekday()
+      if current_dow <= weekdays.index(tsin.casefold()):
+        return _now - timedelta(days=7 - (weekdays.index(tsin.casefold()) - current_dow))
+      else:
+        return _now - timedelta(days=current_dow - weekdays.index(tsin.casefold()))
+    elif tsin.casefold() in abbrev_weekdays:
+      '''"parse" a weekday abbreviation'''
+      _now = now()
+      current_dow = _now.weekday()
+      if current_dow <= abbrev_weekdays.index(tsin.casefold()):
+        return _now - timedelta(days=7 - (abbrev_weekdays.index(tsin.casefold()) - current_dow))
+      else:
+        return _now - timedelta(days=current_dow - abbrev_weekdays.index(tsin.casefold()))
+
+    else:
+      match tsin.casefold().strip():
+        case 'now':       return now()
+        case 'today':     return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S')
+        case 'yesterday': return datetime.strptime(f'{now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=1)
+        case _:
+          raise InvalidTypeE(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
+  else:
+    raise InvalidTypeE(f'Unknown input type {type(tsin)} for timestamp {tsin!r}.')
 
 def explain_dates():
     msg = '''The system should know how to parse these custom pseudo-values and formats.

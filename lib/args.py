@@ -19,73 +19,14 @@ def email(s):
   return str(s)
 
 def _datetime(dtin:str | datetime) -> datetime:
-  weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-  abbrev_weekdays = [day[:3] for day in weekdays]
-  if not isinstance(dtin, (datetime, str)):
-    raise Exception(f'Input value {dtin!r} is unknown type {type(dtin)}.')
-
-  if isinstance(dtin, datetime):
-    return dtin
-
-  dtin = dtin.strip().casefold()
-  match dtin:
-    case 'last':      return Project.last().when
-    case 'now':       return lib.now()
-    case 'today':     return datetime.strptime(f'{lib.now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S')
-    case 'yesterday': return datetime.strptime(f'{lib.now():%F} 00:00:00', '%Y-%m-%d %H:%M:%S') - timedelta(days=1)
-    case _ if dtin.isdigit() or istimestamp_id(dtin):
-      '''"parse" a timestamp or redis stream id'''
-      return parse_timestamp(dtin)
-    case _ if dtin.endswith(' ago') and dtin.count(' ') == 2:
-      '''"parse" some time ago'''
-      num_time, num_scale, _ = dtin.split(' ')
-
-      if num_scale not in ['weeks', 'days', 'hours', 'minutes', 'seconds']:
-        raise Exception(f'Provided scale {num_scale} is invalid.')
-
-      if not num_time.isdigit() or isfloat(num_time):
-        raise Exception(f'Provided time {num_time} is invalid.')
-
-      return lib.now() - timedelta(**{num_scale: int(num_time)})
-    case _ if dtin in weekdays:
-      '''"parse" a weekday'''
-      _now = lib.now()
-      current_dow = _now.weekday()
-      if current_dow <= weekdays.index(dtin.casefold()):
-        return _now - timedelta(days=7 - (weekdays.index(dtin.casefold()) - current_dow))
-      else:
-        return _now - timedelta(days=current_dow - weekdays.index(dtin.casefold()))
-    case _ if dtin in abbrev_weekdays:
-      '''"parse" a weekday abbreviation'''
-      _now = lib.now()
-      current_dow = _now.weekday()
-      if current_dow <= abbrev_weekdays.index(dtin.casefold()):
-        return _now - timedelta(days=7 - (abbrev_weekdays.index(dtin.casefold()) - current_dow))
-      else:
-        return _now - timedelta(days=current_dow - abbrev_weekdays.index(dtin.casefold()))
-    case _ if dtin.count(' ') > 0:
-      '''parse a datetime'''
-      if dtin.count(' ') > 2 or dtin.count(':') not in (1, 2):
-        raise Exception(f'Unknown datetime format for input value {dtin!r}.')
-
-      if dtin.endswith('am') or dtin.endswith('pm'):
-        return datetime.strptime(dtin, '%Y-%m-%d %I:%M:%S %p')
-      elif dtin.count(':') == 1:
-        return datetime.strptime(dtin, '%Y-%m-%d %H:%M')
-      elif dtin.count(':') == 2:
-        return datetime.strptime(dtin, '%Y-%m-%d %H:%M:%S')
-    case _ if (num_sep := dtin.count(':')) > 0:
-      '''parse a time'''
-      if num_sep > 2:
-        raise Exception(f'Unknown datetime format for input value {dtin!r}.')
-
-      if num_sep == 1:
-        return datetime.strptime(f'{lib.now():%F} {dtin}', '%Y-%m-%d %H:%M')
-      elif num_sep == 2:
-        return datetime.strptime(f'{lib.now():%F} {dtin}', '%Y-%m-%d %H:%M:%S')
-    case _:
-      '''parse a date'''
-      return datetime.strptime(dtin, '%Y-%m-%d')
+  if isinstance(dtin, str):
+    dtin = dtin.strip().casefold()
+    if dtin == 'last':
+        return Project.last().when
+    else:
+        return parse_timestamp(dtin)
+  else:
+    return parse_timestamp(dtin)
 
 def parse_args(argv=sys.argv[1:]) -> argparse.Namespace:
   from .colors import colors

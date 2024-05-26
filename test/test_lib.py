@@ -122,6 +122,10 @@ class TestLib(TestWornBase):
     self.assertIsInstance(ts, datetime)
     self.assertEqual(datetime(2024, 3, 29, 9, 28, 2, 123400), ts)
 
+    ts = parse_timestamp('1711154701.553')
+    self.assertIsInstance(ts, datetime)
+    self.assertEqual(datetime(2024, 3, 22, 17, 45, 1, 553000), ts)
+
     ts = parse_timestamp('1711154701553-1')
     self.assertIsInstance(ts, datetime)
     self.assertEqual(datetime(2024, 3, 22, 17, 45, 1, 553000), ts)
@@ -141,7 +145,7 @@ class TestLib(TestWornBase):
     with self.assertRaises(InvalidTimeE):
       parse_timestamp('1711729682.1234.1')
 
-    with self.assertRaises(InvalidTypeE):
+    with self.assertRaises(InvalidTimeE):
       parse_timestamp('123')
 
     with self.assertRaises(InvalidTypeE):
@@ -155,6 +159,200 @@ class TestLib(TestWornBase):
 
     with self.assertRaises(InvalidTypeE):
       parse_timestamp(None)
+
+  def test_datetime_now(self):
+    from lib import parse_timestamp
+    with patch('lib.now', return_value=datetime(1999, 12, 31, 23, 59, 59, 999)) as not_now:
+      r = parse_timestamp('now')
+      self.assertEqual(not_now.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 31, 23, 59, 59, 999))
+
+  def test_datetime_today(self):
+    from lib import parse_timestamp
+    with patch('lib.now', return_value=datetime(1999, 12, 31, 23, 59, 59, 999)) as not_now:
+      r = parse_timestamp('today')
+      self.assertEqual(not_now.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 31, 0, 0, 0))
+
+  def test_datetime_yesterday(self):
+    from lib import parse_timestamp
+    with patch('lib.now', return_value=datetime(1999, 12, 31, 23, 59, 59, 999)) as not_now:
+      r = parse_timestamp('yesterday')
+      self.assertEqual(not_now.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 30, 0, 0, 0))
+
+  def test_datetime_time_ago_exceptions(self):
+    from lib import parse_timestamp, InvalidTypeE, InvalidTimeE
+    with self.assertRaises(InvalidTypeE):
+      parse_timestamp('7 parsecs ago')
+
+    with self.assertRaises(InvalidTypeE):
+      parse_timestamp('n minutes ago')
+
+  def test_datetime_hours_ago(self):
+    from lib import parse_timestamp
+    with patch('lib.now', return_value=datetime(2000, 4, 5, 0, 38, 54, 999)) as not_now:
+      r = parse_timestamp('7 hours ago')
+      self.assertEqual(not_now.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(2000, 4, 4, 17, 38, 54, 999))
+
+  def test_datetime_days_ago(self):
+    from lib import parse_timestamp
+    with patch('lib.now', return_value=datetime(1999, 12, 31, 23, 59, 59, 999)) as not_now:
+      r = parse_timestamp('3 days ago')
+      self.assertEqual(not_now.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 28, 23, 59, 59, 999))
+
+  def test_datetime_weekdays(self):
+    from lib import parse_timestamp
+    with patch('lib.now', return_value=datetime(1999, 12, 31, 23, 59, 59, 999)) as not_now:
+      r = parse_timestamp('thu')
+      self.assertEqual(not_now.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 30, 23, 59, 59, 999))
+
+      r = parse_timestamp('wednesday')
+      self.assertEqual(not_now.call_count, 2)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 29, 23, 59, 59, 999))
+
+      r = parse_timestamp('Tuesday')
+      self.assertEqual(not_now.call_count, 3)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 28, 23, 59, 59, 999))
+
+      r = parse_timestamp('Mon')
+      self.assertEqual(not_now.call_count, 4)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 27, 23, 59, 59, 999))
+
+      r = parse_timestamp('sunday')
+      self.assertEqual(not_now.call_count, 5)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 26, 23, 59, 59, 999))
+
+      r = parse_timestamp('Sat')
+      self.assertEqual(not_now.call_count, 6)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 25, 23, 59, 59, 999))
+
+      r = parse_timestamp('Friday')
+      self.assertEqual(not_now.call_count, 7)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, datetime(1999, 12, 24, 23, 59, 59, 999))
+
+  def test_datetime_datetime(self):
+    from lib import parse_timestamp
+    _n = datetime.now()
+    r = parse_timestamp(_n)
+    self.assertIsInstance(r, datetime)
+    self.assertEqual(r, _n)
+
+  def test_datetime_times(self):
+    from lib import parse_timestamp, InvalidTimeE
+    with self.assertRaises(InvalidTimeE):
+      r = parse_timestamp('13:01:01:34')
+
+    _known_date = datetime(2001, 12, 31, 23, 59, 59, 999)
+    with patch('lib.now', return_value=_known_date) as not_now:
+      _hour_min = '13:01'
+      with patch('datetime.datetime.strptime', return_value=datetime.strptime(f'{_known_date:%F} {_hour_min}', '%Y-%m-%d %H:%M')) as m:
+        r = parse_timestamp(_hour_min)
+
+        self.assertEqual(not_now.call_count, 1)
+        self.assertEqual(m.call_count, 1)
+        self.assertIsInstance(r, datetime)
+        self.assertEqual(r, datetime(2001, 12, 31, 13, 1))
+
+    _known_date = datetime(2001, 12, 31, 23, 59, 59, 999)
+    with patch('lib.now', return_value=_known_date) as not_now:
+      _hour_min = '13:01:57'
+      with patch('datetime.datetime.strptime', return_value=datetime.strptime(f'{_known_date:%F} {_hour_min}', '%Y-%m-%d %H:%M:%S')) as m:
+        r = parse_timestamp(_hour_min)
+
+        self.assertEqual(not_now.call_count, 1)
+        self.assertEqual(m.call_count, 1)
+        self.assertIsInstance(r, datetime)
+        self.assertEqual(r, datetime(2001, 12, 31, 13, 1, 57))
+
+  def test_datetime_dates(self):
+    from lib import parse_timestamp, InvalidTimeE
+    _known_date = datetime(2024, 3, 31)
+    with patch('datetime.datetime.strptime', return_value=_known_date) as m:
+      r = parse_timestamp('2024-03-31')
+      self.assertEqual(m.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, _known_date)
+
+  def test_datetime_datetimes(self):
+    from lib import parse_timestamp, InvalidTimeE
+    with self.assertRaises(Exception):
+      parse_timestamp('2024-03-31 12:45:56 08:00 am')
+
+    with self.assertRaises(Exception):
+      parse_timestamp('2024-03-31 12 45 56')
+
+    _known_date = datetime(2024, 5, 1, 18, 22, 7)
+    with patch('datetime.datetime.strptime', return_value=_known_date) as m:
+      r = parse_timestamp('2024-05-01 06:22:07 pm')
+      self.assertEqual(m.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, _known_date)
+
+    _known_date = datetime(2024, 5, 1, 6, 22, 7)
+    with patch('datetime.datetime.strptime', return_value=_known_date) as m:
+      r = parse_timestamp('2024-05-01 06:22:07 am')
+      self.assertEqual(m.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, _known_date)
+
+    _known_date = datetime(2024, 5, 1, 18, 29)
+    with patch('datetime.datetime.strptime', return_value=_known_date) as m:
+      r = parse_timestamp('2024-05-01 06:29')
+      self.assertEqual(m.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, _known_date)
+
+    _known_date = datetime(2024, 5, 1, 6, 33, 29)
+    with patch('datetime.datetime.strptime', return_value=_known_date) as m:
+      r = parse_timestamp('2024-05-01 06:33:29')
+      self.assertEqual(m.call_count, 1)
+      self.assertIsInstance(r, datetime)
+      self.assertEqual(r, _known_date)
+
+  def test_datetime_digits_and_stream_ids(self):
+    from lib import parse_timestamp, InvalidTimeE
+    with patch('lib.parse_timestamp', return_value=datetime.now()) as mock_ts:
+      r = parse_timestamp('1234567890')
+      self.assertEqual(mock_ts.call_count, 1)
+      self.assertIsInstance(r, datetime)
+
+    with patch('lib.parse_timestamp', return_value=datetime.now()) as mock_ts:
+      r = parse_timestamp('1234567890123-1')
+      self.assertEqual(mock_ts.call_count, 1)
+      self.assertIsInstance(r, datetime)
+
+  def test_datetime_invalid_input(self):
+    from lib import parse_timestamp, InvalidTypeE, InvalidTimeE
+    with self.assertRaises(InvalidTimeE):
+      parse_timestamp(['i', 'am', 'a', 'list'])
+
+    with self.assertRaises(InvalidTimeE):
+      parse_timestamp(('i', 'am', 'a', 'tuple'))
+
+    with self.assertRaises(InvalidTypeE):
+      parse_timestamp({'i': 'am', 'a': 'dict'})
+
+    with self.assertRaises(InvalidTimeE):
+      parse_timestamp('i am a string with too many spaces')
+
+    with self.assertRaises(InvalidTimeE):
+      parse_timestamp('1-2-3-4-5')
 
   def test_explain_dates(self):
     from lib import explain_dates

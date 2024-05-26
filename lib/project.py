@@ -23,7 +23,8 @@ class Project(object):
     return hash(self) == hash(other)
 
   def equiv(self, other):
-    if isinstance(other, Project):
+    if other is None: return False
+    elif isinstance(other, Project):
       if isinstance(other.id, UUID):                       return self.id == other.id
       elif isinstance(other.id, str) and isuuid(other.id): return self.id == UUID(other.id)
     elif isinstance(other, UUID):                          return self.id == other
@@ -237,47 +238,22 @@ class LogProject(Project):
     raise InvalidTypeE(f"Project {new!r} is the wrong type {type(new)!r}.")
 
   @classmethod
-  def all_matching_since(kind, matching:str, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:
-    start = stream_id(parse_timestamp(since), seq='0')
+  def all_matching_since(kind, matching, since, count:int=None, _version:str | UUID=None) -> Generator:
+    if since is None:
+      start = '-'
+    else:
+      start = stream_id(parse_timestamp(since), seq='0')
 
     key = 'logs'
     if _version is not None:
       key = f'logs-{str(_version)}'
 
-    r = []
-    for (tid, project) in db.xrange(key, start=start, count=count):
-      _project = Project.make(project, when=tid)
-      if _project.equiv(matching):
-        r.append(_project)
-    return r
-#    return (_project for (tid, project) in db.xrange(key, start=start, count=count) if (_project := Project.make(project, when=tid)).equiv(matching))
-#    return (Project.make(project.get('project'), when=tid)) for (tid, project) in db.xrange(key, start=start, count=count) if (_project := .equiv(matching))
+    return (project for (tid, project) in db.xrange(key, start=start, count=count) if (project := LogProject.make(project, when=tid)) and project.equiv(matching))
 
-  @classmethod
-  def all_since(kind, since:datetime, count:int=None, _version:str | UUID=None) -> Generator:
-    start = stream_id(parse_timestamp(since), seq='0')
-
-    key = 'logs'
-    if _version is not None:
-      key = f'logs-{str(_version)}'
-
-    return (LogProject.make(project, when=tid) for (tid, project) in db.xrange(key, start=start, count=count))
-
-  @classmethod
-  def all_matching(kind, matching:str, count:int=None, _version:str | UUID=None) -> Generator:
-    key = 'logs'
-    if _version is not None:
-      key = f'logs-{str(_version)}'
-
-    return (_project for (tid, project) in db.xrange(key, start='-', count=count) if (_project := LogProject.make(project, when=tid)).equiv(matching))
-
-  @classmethod
-  def all(kind, count:int=None, _version:str | UUID=None) -> Generator:
-    key = 'logs'
-    if _version is not None:
-      key = f'logs-{str(_version)}'
-
-    return (LogProject.make(project, when=tid) for (tid, project) in db.xrange(key, start='-', count=count))
+  from functools import partialmethod
+  all = partialmethod(all_matching_since, since=None, matching=None)
+  all_matching = partialmethod(all_matching_since, since=None)
+  all_since = partialmethod(all_matching_since, matching=None)
 
   @classmethod
   def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
