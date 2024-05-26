@@ -88,14 +88,14 @@ class TestProject(TestWornBase):
   def test_is_last(self):
     me = Project(uuid4(), 'Central Park')
     with patch('lib.db.has', return_value=True) as mock_has:
-      with patch('lib.db.xrange', return_value=[(f'{datetime.now():%s%f}-0', {'project': str(uuid4()), 'state': 'started'})]) as mock_range:
+      with patch('lib.db.xrange', return_value=[(f'{datetime.now():%s}-0', {'project': str(uuid4()), 'state': 'started'})]) as mock_range:
         with patch('lib.db.get', return_value='Parlor') as mock_get:
           self.assertFalse(me.is_last())
 
     _uuid = uuid4()
     me = Project(_uuid, 'Paperback')
     with patch('lib.db.has', return_value=True) as mock_has:
-      with patch('lib.db.xrange', return_value=[(f'{datetime.now():%s%f}-0', {'project': str(_uuid), 'state': 'started'})]) as mock_range:
+      with patch('lib.db.xrange', return_value=[(f'{datetime.now():%s}-0', {'project': str(_uuid), 'state': 'started'})]) as mock_range:
         with patch('lib.db.get', return_value='Paperback') as mock_get:
           self.assertTrue(me.is_last())
 
@@ -122,7 +122,7 @@ class TestProject(TestWornBase):
       self.assertEqual(log_add.call_count, 1)
 
   def test_stop_project(self):
-    proj = LogProject(uuid4(), 'Mud Larker', 'stopped', f'{self.known_date:%s%f}-0')
+    proj = LogProject(uuid4(), 'Mud Larker', 'stopped', f'{self.known_date:%s}-0')
     with patch.object(proj, 'log') as mock_log:
       proj.stop(self.known_date)
       self.assertFalse(proj.is_running())
@@ -136,17 +136,22 @@ class TestProject(TestWornBase):
       self.assertEqual(mock_log.call_count, 1)
       self.assertEqual(mock_log.call_args.args, ('stopped', self.known_date))
 
-  def test_start_project_without_last(self):
+  def test_project_without_last(self):
     '''Start a new project without a previous project'''
     p = Project(uuid4(), 'Testing')
-    with patch.object(Project, 'last', return_value=FauxProject()):
-      with self.assertRaises(Project.FauxProjectE):
-        p.start()
+    p.stop = MagicMock()
+    p.add = MagicMock()
+    p.log = MagicMock()
+    with patch.object(Project, 'last', return_value=FauxProject()) as l:
+      p.start(now())
+      self.assertEqual(p.stop.call_count, 0)
+      self.assertEqual(p.add.call_count, 1)
+      self.assertEqual(p.log.call_count, 1)
 
   def test_start_project_with_last(self):
     '''Start a new project with a previous project'''
     when = now()
-    with patch.object(Project, 'last', return_value=Project(uuid4(), 'the last thing I did, duh', 'stopped', f'{when:%s%f}-0')) as last:
+    with patch.object(Project, 'last', return_value=Project(uuid4(), 'the last thing I did, duh', 'stopped', f'{when:%s}-0')) as last:
       with patch.multiple(Project, add=DEFAULT, log=DEFAULT, stop=DEFAULT) as mockp:
         p = Project(uuid4(), 'Testing')
         p.start(when)
@@ -178,7 +183,7 @@ class TestProject(TestWornBase):
 
   def test_remove(self):
     _uuid = uuid4()
-    _ts   = f'{self.known_date:%s%f}-9'
+    _ts   = f'{self.known_date:%s}-9'
     proj  = Project(_uuid, 'Peanut Butter')
     with patch('lib.db.xrange', return_value=iter([(_ts, {'project': _uuid, 'state': 'started'})])) as mock_range:
       with patch('lib.db.get') as mock_get:
@@ -204,7 +209,7 @@ class TestProject(TestWornBase):
     '''case {'project': nameorid as _uuid, 'state': state} if isuuid(_uuid):'''
     with patch('lib.db.get', return_value='Worn') as mock_db:
       proj = Project.make(dict(project=self.valid_uuid, state='started'), self.known_date)
-      log = LogProject(self.valid_uuid, 'Worn', 'started', f'{self.known_date:%s%f}-0')
+      log = LogProject(self.valid_uuid, 'Worn', 'started', f'{self.known_date:%s}-0')
       self.assertEqual(proj, log, msg=f'\n{proj}\n != \n{log}\n')
 
   def test_make_from_last_keyword(self):
@@ -287,13 +292,13 @@ class TestProject(TestWornBase):
   def test_make_from_using_timestamp_id(self):
     '''case str(nameorid) if istimestamp_id(nameorid) and len(db.xrange('logs', start=nameorid, count=1)) > 0:'''
     _uuid = uuid4()
-    with patch('lib.db.xrange', return_value=[(f'{self.known_date:%s%f}-5', {'project': _uuid, 'state': 'started'})]) as mock_range:
+    with patch('lib.db.xrange', return_value=[(f'{self.known_date:%s}-5', {'project': _uuid, 'state': 'started'})]) as mock_range:
       with patch('lib.db.get', return_value='Synthetica') as mock_get:
-        proj = Project.make(f'{self.known_date:%s%f}-5')
+        proj = Project.make(f'{self.known_date:%s}-5')
         self.assertTrue(mock_range.called)
         self.assertEqual(mock_range.call_count, 2)
         self.assertEqual(mock_range.call_args.args, ('logs',))
-        self.assertEqual(mock_range.call_args.kwargs, dict(start=f'{self.known_date:%s%f}-5', count=1))
+        self.assertEqual(mock_range.call_args.kwargs, dict(start=f'{self.known_date:%s}-5', count=1))
 
         self.assertTrue(mock_get.called)
         self.assertEqual(mock_get.call_count, 1)
@@ -303,7 +308,7 @@ class TestProject(TestWornBase):
         self.assertEqual(proj.id, _uuid)
         self.assertEqual(proj.name, 'Synthetica')
         self.assertEqual(proj.state, 'started')
-        self.assertEqual(proj.timestamp_id, f'{self.known_date:%s%f}-5')
+        self.assertEqual(proj.timestamp_id, f'{self.known_date:%s}-5')
         self.assertEqual(proj.serial, 5)
 
   def test_make_from_using_project_name(self):

@@ -30,6 +30,9 @@ def main() -> None:
     case Namespace(action='gui'):
       from lib.gui import gui
       gui([project.name for project in Project.all()], Project.last())
+    case Namespace(action='gen'):
+      from uuid import uuid4
+      print(uuid4())
     case Namespace(action='rename'):
       Project.make(p.project).rename(Project(' '.join(p.to).strip().replace('\n', ' ')))
     case Namespace(action='rm'):
@@ -84,7 +87,11 @@ def main() -> None:
     case Namespace(action='help'):
       parg.print_help()
     case Namespace(action='show', display='last') | Namespace(action='stat'):
-      print(f'{Project.last():last}')
+      last = Project.last()
+      if isinstance(last, FauxProject):
+        print('There are no projects to display.')
+      else:
+        print(f'{Project.last():last}')
     case Namespace(action='show', display='id'):
       print(Project.make(p.project))
     case Namespace(action='show', display='projects'):
@@ -93,26 +100,14 @@ def main() -> None:
         if project.is_last() and Project.make('last').is_running():
           fmt += f' ({colors.underline}{colors.bg.blue}currently running{colors.reset})'
         print(fmt)
-    case Namespace(action='show', display='logs', project=None, since=None):
-      fmt = 'log'
-      if p.timestamp: fmt = 'log!t'
-      for log in LogProject.all():
-        print(f'{log:{fmt}}'.format(log))
-    case Namespace(action='show', display='logs', project=project, since=None):
-      fmt = 'log'
-      if p.timestamp: fmt = 'log!t'
-      for log in LogProject.all_matching(project):
-        print(f'{log:{fmt}}'.format(log))
-    case Namespace(action='show', display='logs', project=None, since=since):
-      fmt = 'log'
-      if p.timestamp: fmt = 'log!t'
-      for log in LogProject.all_since(since):
-        print(f'{log:{fmt}}'.format(log))
     case Namespace(action='show', display='logs', project=project, since=since):
-      fmt = 'log'
-      if p.timestamp: fmt = 'log!t'
-      for log in LogProject.all_matching_since(project, since):
-        print(f'{log:{fmt}}'.format(log))
+      if not db.has('logs') or len(logs := db.xrange('logs', count=1, reverse=True)) == 0:
+        print('There are no logs to display.')
+      else:
+        fmt = 'log'
+        if p.timestamp: fmt = 'log!t'
+        for log in LogProject.all(matching=project, since=since):
+          print(f'{log:{fmt}}'.format(log))
     case Namespace(action='show'):
       sharg.print_help()
     case Namespace(action='edit', to=None, project=None, state=new_state) if (project := LogProject.last()).state != new_state:
@@ -136,7 +131,7 @@ def main() -> None:
       report = Report(LogProject.all(), LogProject.last().when, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
     case Namespace(action='report', project=None, since=since, ticket=None, mailto=None):
-      report = Report(LogProject.all_since(since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      report = Report(LogProject.all(since=since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
     case Namespace(action='report', project=None, since=None, ticket=ticket, mailto=None):
       debug('Reporting ALL logs to a ticket is currently not supported.')
@@ -145,19 +140,19 @@ def main() -> None:
       res = report.mail(to, p.format, p.noop)
       sys.exit(res)
     case Namespace(action='report', project=project, since=None, ticket=None, mailto=None):
-      report = Report(LogProject.all_matching(project), None, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      report = Report(LogProject.all(matching=project), None, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
     case Namespace(action='report', project=project, since=since, ticket=None, mailto=None):
-      report = Report(LogProject.all_matching_since(project, since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      report = Report(LogProject.all(matching=project, since=since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
     case Namespace(action='report', project=nameorid, since=None, ticket=ticket) if not db.has('cache:recorded', Project.make(nameorid).id):
       raise Exception(f'Unable to determine the time frame for when to report the details of {nameorid!r}')
     case Namespace(action='report', project=nameorid, since=None, ticket=ticket):
       when = db.get('cache:recorded', project.id)
-      res  = Report(LogProject.all_matching(nameorid), when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
+      res  = Report(LogProject.all(matching=nameorid), when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
       sys.exit(res)
     case Namespace(action='report', project=nameorid, since=since, ticket=ticket):
-      res = Report(LogProject.all_matching_since(nameorid, since), since, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
+      res = Report(LogProject.all(matching=nameorid, since=since), since, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
       sys.exit(res)
     case Namespace(action='report'):
       rarg.print_help()

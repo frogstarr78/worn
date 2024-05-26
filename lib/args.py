@@ -63,6 +63,8 @@ def parse_args(argv=sys.argv[1:]) -> argparse.Namespace:
   show = sub.add_parser('show',  help='Show some aspect of the system', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   showsub = show.add_subparsers(dest='display', required=False)
 
+  pgen = sub.add_parser('gen', help='Generate a uuid', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
   shas = showsub.add_parser('last',     help='Show the last status.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   shor = showsub.add_parser('projects', help='Show the available projects.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   shol = showsub.add_parser('logs',     help='Show the project logs.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)

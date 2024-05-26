@@ -2,6 +2,7 @@ from . import *
 from . import db
 from .colors import colors
 from typing import Generator
+from functools import partialmethod
 
 class Project(object):
   __match_args__ = ("id","name")
@@ -59,7 +60,7 @@ class Project(object):
     return self == Project.last()
 
   def add(self) -> None:
-    db.add('begun', now().timestamp(), expire=3600, nx=True)
+    db.add('begun', str(now().timestamp()).replace('.', ''), expire=3600, nx=True)
     db.add('projects', {self.name.casefold().strip(): self.id, self.id: self.name.strip()}, nx=True)
 
   def rename(self, new:Self) -> None:
@@ -77,13 +78,13 @@ class Project(object):
       self.log('stopped', at)
 
   def start(self, at:datetime=now()) -> None:
-    if (last := Project.last()):
+    if (last := Project.last()) and not isinstance(last, FauxProject):
       last.stop(at)
     self.add()
     self.log('started', at)
 
   def remove(self) -> None:
-    for log_project in LogProject.all_matching(self):
+    for log_project in LogProject.all(matching=self):
       log_project.remove()
 
     db.rm('projects', self.name.casefold().strip())
@@ -180,16 +181,16 @@ class FauxProject(Project):
   def add(self):
     raise Project.FauxProjectE(f'You attempted to add a fake project to the database. This is merely a placeholder class/instance and is not meant to be operated on.')
 
-  def start(self, at):
+  def start(self, at=now()):
     raise Project.FauxProjectE(f'You attempted to start a fake project to the database. This is merely a placeholder class/instance and is not meant to be operated on.')
 
-  def stop(self, at):
+  def stop(self, at=now()):
     raise Project.FauxProjectE(f'You attempted to stop a fake project to the database. This is merely a placeholder class/instance and is not meant to be operated on.')
 
-  def log(self, state, at):
+  def log(self, state='stopped', at=now()):
     raise Project.FauxProjectE(f'You attempted to log a fake project to the database. This is merely a placeholder class/instance and is not meant to be operated on.')
 
-  def rename(self, new):
+  def rename(self, new='fake2'):
     raise Project.FauxProjectE(f"Project {new!r} is the wrong type {type(new)!r}.")
 
 class LogProject(Project):
@@ -238,7 +239,7 @@ class LogProject(Project):
     raise InvalidTypeE(f"Project {new!r} is the wrong type {type(new)!r}.")
 
   @classmethod
-  def all_matching_since(kind, matching, since, count:int=None, _version:str | UUID=None) -> Generator:
+  def all(kind, *, matching=None, since=None, count:int=None, _version:str | UUID=None) -> Generator:
     if since is None:
       start = '-'
     else:
@@ -248,17 +249,12 @@ class LogProject(Project):
     if _version is not None:
       key = f'logs-{str(_version)}'
 
-    return (_proj for (tid, project) in db.xrange(key, start=start, count=count) if (_proj := LogProject.make(project, when=tid)) and _proj.equiv(matching))
-
-  from functools import partialmethod
-  all = partialmethod(all_matching_since, since=None, matching=None)
-  all_matching = partialmethod(all_matching_since, since=None)
-  all_since = partialmethod(all_matching_since, matching=None)
+    return (_proj for (tid, project) in db.xrange(key, start=start, count=count) if (_proj := LogProject.make(project, when=tid)) and ( matching is None or _proj.equiv(matching) ))
 
   @classmethod
   def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
     raise Exception("This code is broken right now. The code to update the time does not do what it is supposed to")
-    logs = LogProject.all_since(starting, count=2)
+    logs = LogProject.all(since=starting, count=2)
 
     if len(logs) > 1:
       if logs[0].when == logs[1].when:

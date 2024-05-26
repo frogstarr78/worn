@@ -46,7 +46,7 @@ class TestLib(TestWornBase):
 
   def test_istimestamp_id(self):
     from lib import istimestamp_id
-    time = f'{datetime.now():%s%f}'
+    time = f'{datetime.now():%s}'
     self.assertTrue(istimestamp_id(f'{time[:10]}-*'), msg=f'"{time[:10]}-*" was not considered a valid timestamp id.')
     self.assertTrue(istimestamp_id(f'{time[:11]}-*'), msg=f'"{time[:11]}-*" was not considered a valid timestamp id.')
     self.assertTrue(istimestamp_id(f'{time[:12]}-*'), msg=f'"{time[:12]}-*" was not considered a valid timestamp id.')
@@ -365,10 +365,10 @@ class TestLib(TestWornBase):
 
   def test_stream_id(self):
     from lib import stream_id, InvalidTypeE
-    self.assertEqual(stream_id(self.known_date), f'{self.known_date:%s%f}-*')
-    self.assertEqual(stream_id(self.known_date.timestamp()), f'{self.known_date:%s%f}-*')
-    self.assertEqual(stream_id(str(self.known_date.timestamp())), f'{self.known_date:%s%f}-*')
-    self.assertEqual(stream_id(int(self.known_date.timestamp())), f'{self.known_date:%s%f}-*')
+    self.assertEqual(stream_id(self.known_date), f'{self.known_date:%s}-*')
+    self.assertEqual(stream_id(self.known_date.timestamp()), f'{self.known_date:%s}-*')
+    self.assertEqual(stream_id(str(self.known_date.timestamp())), f'{self.known_date:%s}-*')
+    self.assertEqual(stream_id(int(self.known_date.timestamp())), f'{self.known_date:%s}-*')
 
     with self.assertRaises(InvalidTypeE):
       stream_id(['not', 'a', 'stream', 'id'])

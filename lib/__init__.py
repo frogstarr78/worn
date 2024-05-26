@@ -27,7 +27,7 @@ def isuuid(s:Any) -> bool:
 def stream_id(ts, seq='*'):
   if isinstance(ts, int | float):   return stream_id(datetime.fromtimestamp(float(ts)), seq)
   elif isinstance(ts, str | bytes): return stream_id(parse_timestamp(ts), seq)
-  elif isinstance(ts, datetime):    return f'{ts:%s%f}-{seq}'
+  elif isinstance(ts, datetime):    return f'{ts:%s}-{seq}'
   else:                             raise InvalidTypeE(f'Unknown timestamp {ts!r} type {type(ts)!r}.')
 
 def istimestamp_id(s:str) -> bool:
