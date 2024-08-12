@@ -1,17 +1,16 @@
 import redis
 from typing import Any
+from uuid import uuid4, UUID
 
 def xrange(key:str, *, start:str=None, end:str=None, count:int=None, reverse:bool=False) -> list:
   _key = str(key)
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    if reverse:
-      return conn.xrevrange(_key, start or '+', end or '-', count=count)
-    else:
-      return conn.xrange(   _key, start or '-', end or '+', count=count)
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True, db=0) as conn:
+    if reverse: return conn.xrevrange(_key, start or '+', end or '-', count=count)
+    else:       return conn.xrange(   _key, start or '-', end or '+', count=count)
 
 def xinfo(key:str, hkey:str=None, *, default:Any=None, kind:str='stream') -> dict | str:
   _key = str(key)
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True, db=0) as conn:
     if kind != 'stream': raise Exception(f'Unkown kind {kind}.')
 
     info = conn.xinfo_stream(_key)
@@ -20,34 +19,34 @@ def xinfo(key:str, hkey:str=None, *, default:Any=None, kind:str='stream') -> dic
 
 def has(key:str, hkey:str=None) -> bool:
   _key = str(key)
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True, db=0) as conn:
     if hkey is None:
       return conn.exists(_key) == 1
     else:
       return has(_key) and conn.hexists(_key, str(hkey))
 
 def keys(key:str) -> list:
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True, db=0) as conn:
     return conn.hkeys(str(key))
 
 def get(key:str, hkey:Any=None) -> str | dict:
   _key = str(key)
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
-    if hkey is None:
-      match conn.type(_key):
-        case 'hash': return conn.hgetall(_key)
-        case _:      return conn.get(_key)
-    else:            return conn.hget(_key, str(hkey))
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True, db=0) as conn:
+    match conn.type(_key):
+      case 'hash' if hkey is None:   return conn.hgetall(_key)
+      case 'stream':                 raise Exception('Use xrange method instead.')
+      case _ if hkey is None:        return conn.get(_key)
+      case _:                        return conn.hget(_key, str(hkey))
 
 def rename(key:str, newkey:str) -> None:
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True, db=0) as conn:
     conn.rename(str(key), str(newkey))
     save()
 
 def rm(key:str, sub:int | str=None) -> None:
   _key = str(key)
 
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True, db=0) as conn:
     if sub is None:
       conn.delete(_key)
     else:
@@ -65,7 +64,7 @@ def add(key:str, val:str | int | dict=None, *, expire:int=None, nx:bool=False) -
 
   _key = str(key)
 
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True, db=0) as conn:
     match conn.type(_key):
       case 'hash' if nx:
         for _k, _v in _val.items():
@@ -90,8 +89,14 @@ def add(key:str, val:str | int | dict=None, *, expire:int=None, nx:bool=False) -
     save()
 
 def save(*, bg:bool=False) -> None:
-  with redis.StrictRedis(encoding="utf-8", decode_responses=True) as conn:
+  with redis.StrictRedis(encoding="utf-8", decode_responses=True, db=0) as conn:
     if bg:
       conn.bgsave()
     else:
       conn.save()
+
+def new_version(reason:str | list) -> UUID:
+  version_id = uuid4()
+  add('versions', dict(reason=reason, version=version_id, id='*'))
+  rename('logs', f'logs-{version_id:s}')
+  return version_id
