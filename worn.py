@@ -1,8 +1,8 @@
 #!bin/python3
 
 import sys
-from lib import debug, db
-from lib.project import Project, LogProject
+from lib import debug, db, parse_timestamp
+from lib.project import Project, LogProject, FauxProject
 from lib.report import Report
 from lib.args import parse_args
 from argparse import Namespace
@@ -16,7 +16,7 @@ class Prompt:
   PROJECT = '''Multiple projects found. Please choose the number of the matching project that you want to start?
 0: quit/cancel
 ''',
-  CONFIRM = '''No project found matching the name or id: {args.project!r} at {args.at.strftime('%a %F %T')!r}. Are you sure you want to create a new projected named {args.project!r}? (y|N)'''
+  CONFIRM = '''No project found matching the name or id: {args.project!r} at {args.at:%a %F %T}. Are you sure you want to create a new projected named {args.project!r}? (y|N)'''
 
 def main() -> None:
   parg, sharg, earg, rarg, p = parse_args()
@@ -101,27 +101,50 @@ def main() -> None:
           fmt += f' ({colors.underline}{colors.bg.blue}currently running{colors.reset})'
         print(fmt)
     case Namespace(action='show', display='logs', project=project, since=since):
-      if not db.has('logs') or len(logs := db.xrange('logs', count=1, reverse=True)) == 0:
+      key = 'logs'
+      _version = p.version
+      if p.version is not None:
+        if p.version.count('logs') == 1:
+          key = p.version
+          _version = p.version.removeprefix('logs-')
+        else:
+          key = f'logs-{p.version}'
+
+      if not db.has(key) or len(logs := db.xrange(key, count=1, reverse=True)) == 0:
         print('There are no logs to display.')
       else:
-        fmt = 'log'
-        if p.timestamp: fmt = 'log!t'
-        for log in LogProject.all(matching=project, since=since):
+        if p.raw:
+          fmt = 'raw'
+          print('cat <<-EOQ')
+        else:
+          fmt = 'log'
+          if p.timestamp: fmt = 'log!t'
+        for log in LogProject.all(matching=project, since=since, count=p.count, _version=_version):
           print(f'{log:{fmt}}'.format(log))
+
+        if p.raw:
+          print('EOQ')
+    case Namespace(action='show', display='versions'):
+      fmt = "created='{created:%a %F %T}' version={version} reason={reason!r}"
+      if p.timestamp:
+        fmt = '{timeid} ' + fmt
+      for (timeid, record) in db.xrange('versions'):
+        print(fmt.format(timeid=timeid, created=parse_timestamp(timeid), **record))
     case Namespace(action='show'):
       sharg.print_help()
     case Namespace(action='edit', to=None, project=None, state=new_state) if (project := LogProject.last()).state != new_state:
       project.remove()
       project.state =  new_state
       project.add()
-    case Namespace(action='edit', to=None, project=new_name,  state=None) if (project := LogProject.last()).name != new_name:
+    case Namespace(action='edit', to=None, project=new_name,  state=None) if not (project := LogProject.last()).equiv(new_name):
       project.remove()
       project.name =  new_name
       project.add()
-    case Namespace(action='edit', to=to, reason=str(reason), project=None, state=None):
-      LogProject.edit_log_time(since, to, reason)
-    case Namespace(action='edit', to=to, reason=[reason]) | Namespace(action='edit', to=to, reason=[*reason]):
-      LogProject.edit_log_time(since, to, ' '.join(reason))
+    case Namespace(action='edit', to=to, reason=reason, project=None, state=None):
+      if isinstance(reason, str):
+        LogProject.edit_log_time(p.at, to, reason)
+      elif isinstance(reason, list | tuple):
+        LogProject.edit_log_time(p.at, to, ' '.join(reason))
     case Namespace(action='edit', to=to, reason=None):
       debug('You are required to provide a reason when changing the time of an entry. Please retry the last command while adding a -r|--reason argument.')
       sys.exit(ERR)
@@ -136,8 +159,8 @@ def main() -> None:
     case Namespace(action='report', project=None, since=None, ticket=ticket, mailto=None):
       debug('Reporting ALL logs to a ticket is currently not supported.')
       sys.exit(OK)
-    case Namespace(action='report', project=None, since=None, ticket=None, mailto=to):
-      res = report.mail(to, p.format, p.noop)
+    case Namespace(action='report', ticket=None, mailto=to):
+      res = Report(LogProject.all(matching=p.project, since=p.since)).mail(to, p.format, noop=p.NOOP)
       sys.exit(res)
     case Namespace(action='report', project=project, since=None, ticket=None, mailto=None):
       report = Report(LogProject.all(matching=project), None, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
