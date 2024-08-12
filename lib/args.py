@@ -22,7 +22,7 @@ def _datetime(dtin:str | datetime) -> datetime:
   if isinstance(dtin, str):
     dtin = dtin.strip().casefold()
     if dtin == 'last':
-        return Project.last().when
+        return parse_timestamp(Project.last().when)
     else:
         return parse_timestamp(dtin)
   else:
@@ -68,9 +68,15 @@ def parse_args(argv=sys.argv[1:]) -> argparse.Namespace:
   shas = showsub.add_parser('last',     help='Show the last status.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   shor = showsub.add_parser('projects', help='Show the available projects.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   shol = showsub.add_parser('logs',     help='Show the project logs.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  shol.add_argument('-p', '--project',                       nargs='+', metavar='NAME|UUID', default=None, help='Project name or uuid.')
-  shol.add_argument('-s', '--since',         type=_datetime,            metavar='DATETIME',  default=None, help='Report details since this datetime.')
+  shol.add_argument('-R', '--raw',           action='store_true',                            default=False, help='Show the logs in raw format.')
   shol.add_argument('-t', '--timestamp',     action='store_true',                            default=False, help='Show the timestamp also.')
+  shol.add_argument('-p', '--project',                       nargs='+', metavar='NAME|UUID', default=None,  help='Filter the output by this project name or UUID.')
+  shol.add_argument('-s', '--since',         type=_datetime,            metavar='DATETIME',  default=None,  help='Report logs since this datetime.')
+  shol.add_argument('-v', '--version',                                                       default=None,  help='Show the logs from this log version.')
+  shol.add_argument('-c', '--count',         type=int,                                       default=None,  help='Show only this many logs total.')
+
+  sver = showsub.add_parser('versions', help='Show the log versions.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  sver.add_argument('-t', '--timestamp',     action='store_true',                            default=False, help='Show the timestamp also.')
 
   shid = showsub.add_parser('id', help='Show the project name from the provided id.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   shid.add_argument('UUID', nargs='+', type=UUID, help='UUID(s) to display the project names of.')
