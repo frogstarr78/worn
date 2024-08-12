@@ -216,6 +216,7 @@ class LogProject(Project):
   def __format__(self, fmt_spec:Any) -> str:
     match fmt_spec:
       case 'log!t': return f'{self.timestamp_id} {super().__format__("log")}'
+      case 'raw':    return f'{self.timestamp_id} project {self.id} state {self.state}'
       case _:       return super().__format__(fmt_spec)
 
   def add(self) -> None:
@@ -253,24 +254,21 @@ class LogProject(Project):
 
   @classmethod
   def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
-    raise Exception("This code is broken right now. The code to update the time does not do what it is supposed to")
-    logs = LogProject.all(since=starting, count=2)
+    logs = list(LogProject.all(since=starting, count=2))
 
     if len(logs) > 1:
       if logs[0].when == logs[1].when:
         pass
       elif logs[1].when < to:
-        raise InvalidTimeE(f"The first log entry {logs[1]!s} after the one you have attempted to change, was recorded prior to the time you are attempting to change to '{to:%F %T}'.\nThis is unacceptable. Failing.")
+        debug(f"You have attempted to change the time of a project to a time that is recorded by another project:\n  {logs[1]!s}.\nConsider running 'worn show logs -s {to:%s}' to see what project is running at that time.\nFailing.")
+        return
 
-    version_id = uuid4()
-    new_key = f'logs-{str(version_id)}'
-    db.add('versions', {new_key: reason})
-    db.rename('logs', new_key)
-
+    version_id = db.new_version(reason)
     for log in LogProject.all(_version=version_id):
-      if log.when >= starting:
-        _log = LogProject(log.id, log.name, log.state, to)
-        _log.log(log.state, to)
+      if log.when == starting:
+        _when = to
       else:
-        _log = LogProject(log.id, log.name, log.state, log.when)
-        _log.log(log.state, log.when)
+        _when = log.when
+
+      _log = LogProject(log.id, log.name, log.state, _when)
+      _log.log(log.state, _when)
