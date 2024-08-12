@@ -40,7 +40,7 @@ def isfloat(s:str) -> bool:
     case str():   return s.count('.')  == 1 and all(_.isdigit() for _ in s.split('.'))
     case _:       return False
 
-def parse_timestamp(tsin):
+def parse_timestamp(tsin) -> datetime:
   weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
   abbrev_weekdays = [day[:3] for day in weekdays]
 
