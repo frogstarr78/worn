@@ -45,14 +45,14 @@ class Report(object):
     return sorted(self._data.items(), key=lambda pnt: pnt[0].name.casefold())
 
   def mail(self, to:str, fmt:str='simple', *, noop:bool=False) -> None:
-      body = f'{self:{fmt}}'
-      if noop:
-        print(body)
-        return
+    body = f'{self:{fmt}}'
+    if noop:
+      print(body)
+      return
 
-      with smtplib.SMTP('localhost') as mc:
-        mc.set_debuglevel(1)
-        mc.sendmail('scott@viviotech.net', to, body)
+    with smtplib.SMTP('mail3.viviotech.net') as mc:
+      mc.set_debuglevel(1)
+      mc.sendmail('scott@viviotech.net', to, f'Subject: Time spent report\r\n\r\n{body}')
 
   def post(self, ticket:str | int, comment:str, *, noop:bool=False) -> None:
     if not noop:
