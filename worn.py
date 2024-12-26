@@ -29,7 +29,9 @@ def main() -> None:
   match p:
     case Namespace(action='gui'):
       from lib.gui import gui
-      gui([project.name for project in Project.all()], Project.last())
+      from threading import Lock
+      with Lock():
+        gui([project.name for project in Project.all()], Project.last())
     case Namespace(action='gen'):
       from uuid import uuid4
       print(uuid4())
@@ -37,7 +39,7 @@ def main() -> None:
       Project.make(p.project).rename(Project(' '.join(p.to).strip().replace('\n', ' ')))
     case Namespace(action='rm'):
       Project.make(p.project).remove()
-    case Namespace(action='start') | Namespace(action='stop'):
+    case Namespace(action=('start' | 'stop')):
       projects = Project.nearest_project_by_name(p.project)
       if len(projects) == 1:
         f = getattr(projects.pop(), p.action)
@@ -150,33 +152,25 @@ def main() -> None:
       sys.exit(ERR)
     case Namespace(action='edit'):
       earg.print_help()
-    case Namespace(action='report', project=None, since=None, ticket=None, mailto=None):
-      report = Report(LogProject.all(), LogProject.last().when, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
-      print(f'{report:{p.format}}')
-    case Namespace(action='report', project=None, since=since, ticket=None, mailto=None):
-      report = Report(LogProject.all(since=since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
-      print(f'{report:{p.format}}')
-    case Namespace(action='report', project=None, since=None, ticket=ticket, mailto=None):
-      debug('Reporting ALL logs to a ticket is currently not supported.')
-      sys.exit(OK)
-    case Namespace(action='report', ticket=None, mailto=to):
-      res = Report(LogProject.all(matching=p.project, since=p.since)).mail(to, p.format, noop=p.NOOP)
-      sys.exit(res)
-    case Namespace(action='report', project=project, since=None, ticket=None, mailto=None):
-      report = Report(LogProject.all(matching=project), None, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
-      print(f'{report:{p.format}}')
-    case Namespace(action='report', project=project, since=since, ticket=None, mailto=None):
+
+#    case Namespace(action='report', project=None, since=None, ticket=ticket, mailto=None):
+#      debug('Reporting ALL logs to a ticket is currently not supported.')
+#    case Namespace(action='report', project=nameorid, since=since, ticket=ticket, mailto=None):
+#      res = Report(LogProject.all(matching=nameorid, since=since), since, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
+#      sys.exit(res)
+#    case Namespace(action='report', project=nameorid, since=since, ticket=None, mailto=to):
+#      res = Report(LogProject.all(matching=p.project, since=p.since)).mail(to, p.format, noop=p.NOOP)
+#      sys.exit(res)
+    case Namespace(action='report', project=project, since=None):
+      raise Exception(f'Unable to determine the time frame for when to report the details of {nameorid!r}')
+    case Namespace(action='report', project=project, since=since) if since is None:
+      raise Exception(f'Unable to determine the time frame for when to report the details of {nameorid!r}')
+    case Namespace(action='report', project=None, since=since):
       report = Report(LogProject.all(matching=project, since=since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
       print(f'{report:{p.format}}')
-    case Namespace(action='report', project=nameorid, since=None, ticket=ticket) if not db.has('cache:recorded', Project.make(nameorid).id):
-      raise Exception(f'Unable to determine the time frame for when to report the details of {nameorid!r}')
-    case Namespace(action='report', project=nameorid, since=None, ticket=ticket):
-      when = db.get('cache:recorded', project.id)
-      res  = Report(LogProject.all(matching=nameorid), when, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
-      sys.exit(res)
-    case Namespace(action='report', project=nameorid, since=since, ticket=ticket):
-      res = Report(LogProject.all(matching=nameorid, since=since), since, p.largest_scale, include_all=False, show_header=False).post(ticket, p.comment, noop=p.NOOP)
-      sys.exit(res)
+    case Namespace(action='report', project=project, since=since):
+      report = Report(LogProject.all(matching=project, since=since), since, p.largest_scale, include_all=p.include_all, show_header=(not p.no_header))
+      print(f'{report:{p.format}}')
     case Namespace(action='report'):
       rarg.print_help()
     case _:
