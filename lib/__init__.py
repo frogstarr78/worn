@@ -18,11 +18,10 @@ def now():
   return datetime.now()
 
 def isuuid(s:Any) -> bool:
-  match s:
-    case str():                           return re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', s)
-    case tuple() | list() if len(s) == 1: return isuuid(s[0])
-    case UUID():                          return True
-    case _:                               return False
+    if isinstance(s, UUID):                           return True
+    elif isinstance(s, str):                          return re.search(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', s) is not None
+    elif isinstance(s, tuple | list) and len(s) == 1: return all(isuuid(_) for _ in s)
+    else:                                             return False
 
 def stream_id(ts, seq='*'):
   if isinstance(ts, int | float):   return stream_id(datetime.fromtimestamp(float(ts)), seq)
@@ -31,7 +30,7 @@ def stream_id(ts, seq='*'):
   else:                             raise InvalidTypeE(f'Unknown timestamp {ts!r} type {type(ts)!r}.')
 
 def istimestamp_id(s:str) -> bool:
-  return isinstance(s, str) and re.search(r'^\d+-(\d+|\*)$', s)
+  return isinstance(s, str) and re.search(r'^\d+-(\d+|\*)$', s) is not None
 
 def isfloat(s:str) -> bool:
   match s:

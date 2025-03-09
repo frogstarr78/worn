@@ -45,6 +45,10 @@ class Report(object):
     return sorted(self._data.items(), key=lambda pnt: pnt[0].name.casefold())
 
   def mail(self, to:str, fmt:str='simple', *, noop:bool=False) -> None:
+    assert isinstance(to, str), f"{to=} should be an instance of str, but isn't."
+    assert isinstance(fmt, str), f"{fmt=} should be an instance of str, but isn't."
+    assert isinstance(noop, bool), f"{noop=} should be an instance of bool, but isn't."
+
     body = f'{self:{fmt}}'
     if noop:
       print(body)
@@ -55,6 +59,12 @@ class Report(object):
       mc.sendmail('scott@viviotech.net', to, f'Subject: Time spent report\r\n\r\n{body}')
 
   def post(self, ticket:str | int, comment:str, *, noop:bool=False) -> None:
+    assert isinstance(ticket, str | int), f"{ticket=} should be an instance of str or int, but isn't."
+    if isinstance(ticket, str):
+      assert ticket.isdigit(), f"{ticket=} should be a valid number, but isn't."
+    assert isinstance(comment, str), f"{fmt=} should be an instance of str, but isn't."
+    assert isinstance(noop, bool), f"{noop=} should be an instance of bool, but isn't."
+
     if not noop:
       import requests
 
@@ -62,7 +72,7 @@ class Report(object):
     self.scale = 's'
     r = set([])
     for project, time in self._sorted_data:
-      _duration = self._how_long(time)[0]/MINUTE
+      _duration = f'{self._how_long(time)[0]/MINUTE:0.2f}'
       _comment = comment.format(project=project)
       if noop:
         debug(f'https://portal.viviotech.net/api/2.0/?method=support.ticket_post_staff_response&comment=1&ticket_id={ticket}&time_spent={_duration}&body="{_comment}"')
@@ -75,6 +85,8 @@ class Report(object):
     return all(isinstance(_, bool) and _ for _ in r)
 
   def _how_long(self, ts:int) -> tuple[int | float]:
+    assert isinstance(ts, int | float), f"{ts=} should be an instance of int or float, but isn't."
+
     match self.scale:
       case 'w': return ( int(ts/WEEK), int(ts%WEEK/DAY), int(ts%DAY/HOUR), int(ts%HOUR/MINUTE), int(ts%MINUTE))
       case 'd': return (               int(ts/DAY),      int(ts%DAY/HOUR), int(ts%HOUR/MINUTE), int(ts%MINUTE))
@@ -135,7 +147,7 @@ class Report(object):
       case (True, 's'): r = ''
 
     r += 'total (in seconds),id,project,running'
-    r += isinstance(self.at, datetime) and ',since' or ''
+    r += ',since' if isinstance(self.at, datetime) else ''
     r += "\n"
 
     for project, total in self._sorted_data:
@@ -149,9 +161,9 @@ class Report(object):
         r += ','
 
       r += f'{int(total)},{project:id},"{project:name}",'
-      r += self._last.is_running() and self._last.equiv(project) and 'true' or 'false'
+      r += 'true' if self._last.is_running() and self._last.equiv(project) else 'false'
 
-      r += isinstance(self.at, datetime) and f',{self.at.strftime("%a %F %T")}' or ''
+      r += f',{self.at:%a %F %T}' if isinstance(self.at, datetime) else ''
       r += "\n"
 
     return r
@@ -178,7 +190,7 @@ class Report(object):
     r += ' Total\n'
     return r
 
-  def __format__(self, fmt_spec: Any) -> str:
+  def __format__(self, fmt_spec:Any) -> str:
     match fmt_spec:
       case 'csv':    return self._csv_format()
       case 'simple': return self._simple_format()

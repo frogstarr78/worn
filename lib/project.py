@@ -1,7 +1,7 @@
 from . import *
 from . import db
 from .colors import colors
-from typing import Generator
+from typing import Any, Generator, Self, Union
 from functools import partialmethod
 
 class Project(object):
@@ -11,11 +11,17 @@ class Project(object):
   class InvalidIDE(BaseException): pass
   class FauxProjectE(BaseException): pass
 
-  def __init__(self, id:UUID, name:str, /, state:str='stopped', when:datetime=now()):
+  def __init__(self, id:UUID, name:Union[UUID, str], /, state:str='stopped', when:datetime=now()):
     if isuuid(id) and isuuid(name):
-      raise Project.InvalidIDE(f'Attempting to set the project id {id!r} to a uuid bad project name {name!r}!')
+      raise Project.InvalidIDE(f'Attempting to set the project {id=} to a uuid bad project name {name=}!')
 
-    self.id = id
+    if isinstance(id, str):
+      assert isuuid(id), f"{id=} should be an instance of UUID, but isn't."
+    assert isinstance(state, str), f"{state=} should be a string but isn't."
+    assert state in ('started', 'stopped'), f"{state=} should be either 'started' or 'stopped'."
+    assert isinstance(when, datetime) or istimestamp_id(when), f"{when=} should be a datetime or valid timestamp id, but isn't."
+
+    self.id = id if isinstance(id, UUID) else UUID(id)
     self.name = name
     self.state = state
     self.when = when
@@ -23,24 +29,26 @@ class Project(object):
   def __eq__(self, other):
     return hash(self) == hash(other)
 
-  def equiv(self, other):
+  def equiv(self, other:Self) -> bool:
     if other is None: return False
     elif isinstance(other, Project):
       if isinstance(other.id, UUID):                       return self.id == other.id
       elif isinstance(other.id, str) and isuuid(other.id): return self.id == UUID(other.id)
     elif isinstance(other, UUID):                          return self.id == other
     elif isinstance(other, str):
-      if isuuid(other): return self.id == UUID(other)
-      else:             return self.name == other or self.name.casefold() == other.casefold()
+      if isuuid(other):
+        return self.id == UUID(other)
+      else:
+        return self.name == other or self.name.casefold() == other.casefold()
     return False
 
-  def __sub__(self, other):
+  def __sub__(self, other:Self) -> int:
     return self.when.timestamp() - other.when.timestamp()
 
   def __hash__(self) -> int:
     return hash(self.id)
 
-  def __str__(self):
+  def __str__(self) -> str:
     return f'<Project hash:{hash(self)} id:{self.id!r} name:{db.get("projects", self.id)!r} state:"{self.is_running() and colors.fg.green or colors.fg.orange}{self.state}{colors.reset}" when:{self.when.strftime("%a %F %T")!r}>'
 
   def __format__(self, fmt_spec:Any) -> str:
@@ -71,13 +79,17 @@ class Project(object):
     db.add('projects', {new.name.casefold(): self.id})
 
   def log(self, state:str, at:datetime=now()) -> None:
+    assert isinstance(state, str), f"{state=} should be a string but isn't."
+    assert isinstance(at, datetime), f"{at=} should be a datetime but isn't."
     LogProject(self.id, self.name, state, at).add()
 
   def stop(self, at:datetime=now()) -> None:
+    assert isinstance(at, datetime), f"{at=} should be a datetime but isn't."
     if self.is_running():
       self.log('stopped', at)
 
   def start(self, at:datetime=now()) -> None:
+    assert isinstance(at, datetime), f"{at=} should be a datetime but isn't."
     if (last := Project.last()) and not isinstance(last, FauxProject):
       last.stop(at)
     self.add()
@@ -101,6 +113,8 @@ class Project(object):
 
   @classmethod
   def make(kind, nameorid:Any, when:datetime=now()) -> Self:
+    assert isinstance(when, datetime) or istimestamp_id(when), f"{when=} should be a datetime or timestamp id, but isn't."
+
     match nameorid:
       case {'project': nameorid as _uuid, 'state': state} if isuuid(_uuid):
         return LogProject(_uuid, db.get('projects', _uuid), state, when)
@@ -124,7 +138,7 @@ class Project(object):
       case ( Project(id=_) | Project(name=_) ) as project:
         return project
       case None | [] | tuple() | {} | set():
-        debug(f"Project {nameorid!r} was empty.")
+        debug(f"Project {nameorid=} was empty.")
         return FauxProject()
       case _:
         debug(msg := f'Unable to find or create a new nameorid {nameorid} of type {type(nameorid)}.')
@@ -132,6 +146,8 @@ class Project(object):
 
   @classmethod
   def nearest_project_by_name(kind, name:str) -> set[Self]:
+    assert isinstance(name, str | UUID), f"{name=} should be one of str but isn't."
+
     matches = set([])
     counts = [0, 0]
     if name == 'last' or db.has('projects', name) or db.has('projects', name.strip().casefold()):
@@ -167,10 +183,18 @@ class Project(object):
 
   @classmethod
   def all(kind) -> Generator:
-    return (Project.make(UUID(pid)) for pid, project in sorted(db.get('projects').items(), key=lambda kv: str(kv[1]).casefold()) if isuuid(pid))
+    if len(_projects := db.get('projects')) > 0:
+      yield from (Project.make(UUID(pid)) for pid, p in sorted(_projects.items(), key=lambda kv: str(kv[1]).casefold()) if isuuid(pid))
+    else:
+      print('No projects', file=sys.stderr)
+      yield from []
 
   @classmethod
-  def cache(kind, ticket:str | int, project) -> None:
+  def cache(kind, ticket:str | int, project:Self) -> None:
+    assert isinstance(ticket, str | int), f"{ticket=} should be one of str or int, but isn't."
+    if isinstance(ticket, str):
+      assert ticket.isdigit(), f"{ticket=} should be a valid number, but isn't."
+
     db.add('cache:tickets', {project.id: ticket})
     db.add('cache:recorded', {project.id: project.when})
 
@@ -237,23 +261,20 @@ class LogProject(Project):
     db.rm('logs', self.timestamp_id)
 
   def rename(self, new):
-    raise InvalidTypeE(f"Project {new!r} is the wrong type {type(new)!r}.")
+    raise InvalidTypeE(f"Project {new=} is the wrong type {type(new)!r}.")
 
   @classmethod
   def all(kind, *, matching=None, since=None, count:int=None, _version:str | UUID=None) -> Generator:
-    if since is None:
-      start = '-'
-    else:
-      start = stream_id(parse_timestamp(since), seq='0')
+    start = '-' if since is None else stream_id(parse_timestamp(since), seq='0')
+    key = 'logs' if _version is None else f'logs-{str(_version)}'
 
-    key = 'logs'
-    if _version is not None:
-      key = f'logs-{str(_version)}'
-
-    return (_proj for (tid, project) in db.xrange(key, start=start, count=count) if (_proj := LogProject.make(project, when=tid)) and ( matching is None or _proj.equiv(matching) ))
+    yield from (_proj for (tid, project) in db.xrange(key, start=start, count=count) if (_proj := LogProject.make(project, when=tid)) and ( matching is None or _proj.equiv(matching) ))
 
   @classmethod
   def edit_log_time(kind, starting:datetime, to:datetime, reason:str) -> None:
+    assert isinstance(starting, datetime), f"{starting=} should be an instance of datetime, but isn't."
+    assert isinstance(to, datetime), f"{to=} should be an instance of datetime, but isn't."
+    assert isinstance(reason, str), f"{reason=} should be an instance of str, but isn't."
     logs = list(LogProject.all(since=starting, count=2))
 
     if len(logs) > 1:
